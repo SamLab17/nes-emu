@@ -1,4 +1,4 @@
-use crate::cpu::isa::AddressingMode;
+use crate::{cpu::isa::AddressingMode, mem::utils::make_address};
 
 use super::{
     cpu::Cpu,
@@ -47,7 +47,7 @@ fn read_next_byte(cpu: &mut Cpu) -> Option<u8> {
 fn read_little_endian_u16(cpu: &mut Cpu) -> Option<u16> {
     let lo = read_next_byte(cpu);
     let hi = read_next_byte(cpu);
-    lo.zip(hi).map(|(l, h)| ((h as u16) << 8) | (l as u16))
+    lo.zip(hi).map(|(l, h)| make_address(l, h))
 }
 
 // TODO: Change to Result<> for better errors?
@@ -99,8 +99,26 @@ mod decode_tests {
 
     use super::decode_instr;
 
+    fn check_decode(binary: &[u8], op: Opcode, am: AddressingMode, n: u8){
+        let mut cpu = Cpu::mock(binary);
+        cpu.reg.pc = 0;
+        assert_eq!(
+            decode_instr(&mut cpu),
+            Some(Instr{op: op, mode: am, num_cycles: n})
+        );
+        assert_eq!(binary.len(), cpu.reg.pc as usize)
+    }
+
     #[test]
-    fn decode_tests() {
+    fn decode_test() {
+        use Opcode::*;
+        use AddressingMode::*;
+        check_decode(&[0x1D, 0xEF, 0xBE], ORA, AbsoluteX(0xBEEF), 4);
+        check_decode(&[0x0E, 0xFE, 0xCA], ASL, Absolute(0xCAFE), 6);
+    }
+
+    #[test]
+    fn multiple_decode_test() {
         let instrs = [
             0x1D, 0xEF, 0xBE, // ORA absX $BEEF
             0x0E, 0xFE, 0xCA, // ASL abs $CAFE
