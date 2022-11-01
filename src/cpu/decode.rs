@@ -103,7 +103,8 @@ mod decode_tests {
         let instrs = [
             0x1D, 0xEF, 0xBE, // ORA absX $BEEF
             0x0E, 0xFE, 0xCA, // ASL abs $CAFE
-            0x15, 0xBB       // ORA zpgX $BB
+            0x15, 0xBB,       // ORA zpgX $BB
+            0x08,             // PHP 
         ];
         let mut cpu = Cpu::mock(&instrs);
         cpu.reg.pc = 0;
@@ -132,6 +133,15 @@ mod decode_tests {
                 op: Opcode::ORA,
                 mode: AddressingMode::ZeroPageX(0xBB),
                 num_cycles: 4
+            })
+        );
+
+        assert_eq!(
+            decode_instr(&mut cpu),
+            Some(Instr {
+                op: Opcode::PHP,
+                mode: AddressingMode::Implied,
+                num_cycles: 3
             })
         );
     }
