@@ -21,7 +21,7 @@ enum Mode {
 
 type Op = Opcode;
 type M = Mode;
-type Tup = (Opcode, Mode, i32);
+type Tup = (Opcode, Mode, u8);
 
 const INV: Tup = (Op::INVALID, M::Imp, 0);
 
