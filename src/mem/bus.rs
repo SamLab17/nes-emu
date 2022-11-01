@@ -43,6 +43,6 @@ impl MemoryDevice for MemoryBus {
                 return dev.dev.write(addr)
             }
         }
-        Err(MemoryError::InvalidAddress)
+        Err(MemoryError::InvalidAddress(addr))
     }
 }
