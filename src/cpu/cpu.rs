@@ -1,16 +1,23 @@
 use super::reg::Registers;
-use crate::mem::bus::MemoryBus;
+use crate::mem::{bus::MemoryBus, device::MemoryDevice, ram::Ram};
 
 pub struct Cpu {
     pub reg: Registers,
-    pub bus: MemoryBus,
+    pub bus: Box<dyn MemoryDevice>,
 }
 
 impl Cpu {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Cpu {
             reg: Default::default(),
-            bus: MemoryBus::new()
+            bus: Box::new(MemoryBus::new())
+        }
+    }
+
+    pub fn mock(mem: &[u8]) -> Self {
+        Cpu {
+            reg: Default::default(),
+            bus: Box::new(Ram::from(mem))
         }
     }
 }

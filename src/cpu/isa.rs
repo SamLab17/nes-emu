@@ -1,7 +1,7 @@
 use crate::{error::NesEmuError, cpu::{reg::Registers, cpu::Cpu}, mem::device::{MemoryDevice, MemoryError}};
 use std::fmt;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AddressingMode {
     Accumulator,
     Absolute(u16),
@@ -79,11 +79,11 @@ pub enum Opcode {
     INVALID,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Instr {
-    op: Opcode,
-    mode: AddressingMode,
-    num_cycles: u8
+    pub op: Opcode,
+    pub mode: AddressingMode,
+    pub num_cycles: u8
 }
 
 #[derive(Debug)]
@@ -98,12 +98,4 @@ impl fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Error occurred: {}\nRegister State:\n{}", self.err, self.reg_state)
     }
-}
-
-fn run_instr(i: Instr, cpu: &mut Cpu, mem: &mut dyn MemoryDevice) -> Result<(), RuntimeError> {
-    Err(RuntimeError { err: (Box::new(MemoryError::InvalidAddress(0))), reg_state: cpu.reg.clone() })
-}
-
-fn fetch_instr(cpu: &mut Cpu) -> Option<Instr> {
-    
 }

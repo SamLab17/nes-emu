@@ -20,5 +20,14 @@ impl fmt::Display for MemoryError {
 
 pub trait MemoryDevice {
     fn read(&self, addr: u16) -> Option<u8>;
-    fn write(&mut self, addr: u16) -> Result<(), MemoryError>;
+    fn write(&mut self, addr: u16, byte: u8) -> Result<(), MemoryError>;
+
+    fn write_many(&mut self, start_addr: u16, bytes: &[u8]) -> Result<(), MemoryError> {
+        let mut addr = start_addr;
+        for byte in bytes.iter() {
+            self.write(addr, *byte)?;
+            addr += 1
+        }
+        Ok(())
+    }
 }

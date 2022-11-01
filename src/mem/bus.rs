@@ -37,10 +37,10 @@ impl MemoryDevice for MemoryBus {
         None
     }
 
-    fn write(&mut self, addr: u16) -> Result<(), MemoryError> {
+    fn write(&mut self, addr: u16, byte: u8) -> Result<(), MemoryError> {
         for dev in self.devices.iter_mut() {
             if addr >= dev.start_addr && addr < dev.end_addr {
-                return dev.dev.write(addr)
+                return dev.dev.write(addr, byte)
             }
         }
         Err(MemoryError::InvalidAddress(addr))

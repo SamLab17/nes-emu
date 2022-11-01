@@ -2,7 +2,6 @@
 
 mod mem;
 mod error;
-mod instr;
 mod cpu;
 
 
