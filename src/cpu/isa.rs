@@ -1,4 +1,4 @@
-use crate::{error::NesEmuError, cpu::{reg::Registers, cpu::Cpu}, mem::device::{MemoryDevice, MemoryError}};
+use crate::{cpu::{reg::Registers, cpu::Cpu}, mem::device::{MemoryDevice, MemoryError}};
 use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -11,7 +11,7 @@ pub enum AddressingMode {
     Implied,
     Indirect(u16),
     XIndirect(u8),
-    IndrectY(u8),
+    IndirectY(u8),
     Relative(u8),
     ZeroPage(u8),
     ZeroPageX(u8),
@@ -86,16 +86,16 @@ pub struct Instr {
     pub num_cycles: u8
 }
 
-#[derive(Debug)]
-struct RuntimeError {
-    err: Box<dyn NesEmuError>,
-    reg_state: Registers
-}
+// #[derive(Debug)]
+// struct RuntimeError {
+//     err: Box<dyn NesEmuError>,
+//     reg_state: Registers
+// }
 
-impl NesEmuError for RuntimeError {}
+// impl NesEmuError for RuntimeError {}
 
-impl fmt::Display for RuntimeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Error occurred: {}\nRegister State:\n{}", self.err, self.reg_state)
-    }
-}
+// impl fmt::Display for RuntimeError {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         write!(f, "Error occurred: {}\nRegister State:\n{}", self.err, self.reg_state)
+//     }
+// }

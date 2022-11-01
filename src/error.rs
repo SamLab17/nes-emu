@@ -1,3 +1,4 @@
 use std::fmt::{Debug, Display};
+use std::error::Error;
 
-pub trait NesEmuError: Debug + Display {}
+pub type Result<T> = core::result::Result<T, Box<dyn Error>>;

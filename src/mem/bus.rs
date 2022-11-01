@@ -1,5 +1,6 @@
 use crate::mem::device::{MemoryDevice, MemoryError};
 use crate::mem::ram::Ram;
+use crate::error::Result;
 
 struct Mapping {
     start_addr : u16,
@@ -28,21 +29,21 @@ impl MemoryBus {
 }
 
 impl MemoryDevice for MemoryBus {
-    fn read(&self, addr: u16) -> Option<u8> {
+    fn read(&self, addr: u16) -> Result<u8> {
         for dev in self.devices.iter() {
             if addr >= dev.start_addr && addr < dev.end_addr {
                 return dev.dev.read(addr)
             }
         }
-        None
+        Err(Box::new(MemoryError::InvalidAddress(addr)))
     }
 
-    fn write(&mut self, addr: u16, byte: u8) -> Result<(), MemoryError> {
+    fn write(&mut self, addr: u16, byte: u8) -> Result<()> {
         for dev in self.devices.iter_mut() {
             if addr >= dev.start_addr && addr < dev.end_addr {
                 return dev.dev.write(addr, byte)
             }
         }
-        Err(MemoryError::InvalidAddress(addr))
+        Err(Box::new(MemoryError::InvalidAddress(addr)))
     }
 }

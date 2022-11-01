@@ -3,14 +3,14 @@ use std::fmt;
 
 bitflags! {
     pub struct StatusFlags: u8 {
-        const Carry = 0b00000001;
-        const Zero = 0b00000010;
-        const InterruptDisable = 0b00000100;
-        const Decimal = 0b0000100;
-        const Break = 0b0001000;
-        const Unusued = 0b00100000;
-        const Overflow = 0b01000000;
-        const Negative = 0b10000000;
+        const CARRY = 0b00000001;
+        const ZERO = 0b00000010;
+        const INTERRUPTABLE = 0b00000100;
+        const DECIMAL = 0b0000100;
+        const BREAK = 0b0001000;
+        const UNUSED = 0b00100000;
+        const OVERFLOW = 0b01000000;
+        const NEGATIVE = 0b10000000;
     }
 }
 

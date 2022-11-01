@@ -1,5 +1,5 @@
-use std::fmt;
-use crate::error::NesEmuError;
+use std::{fmt, error::Error};
+use crate::error::Result;
 
 #[derive(Debug, Clone, Copy)]
 pub enum MemoryError {
@@ -7,22 +7,26 @@ pub enum MemoryError {
     InvalidAddress(u16),
 }
 
-impl NesEmuError for MemoryError {}
+impl Error for MemoryError {
+   fn description(&self) -> &str {
+        match self {
+            MemoryError::ReadOnly(_) => "Address is read-only",
+            MemoryError::InvalidAddress(_) => "Address is invalid" 
+        }
+   }
+}
 
 impl fmt::Display for MemoryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            MemoryError::ReadOnly(addr) => write!(f, "Address 0x{:x} is read-only.", addr),
-            MemoryError::InvalidAddress(addr) => write!(f, "Address 0x{:x} is invalid", addr)
-        }
+        write!(f, "{}", self.to_string())
     }
 }
 
 pub trait MemoryDevice {
-    fn read(&self, addr: u16) -> Option<u8>;
-    fn write(&mut self, addr: u16, byte: u8) -> Result<(), MemoryError>;
+    fn read(&self, addr: u16) -> Result<u8>;
+    fn write(&mut self, addr: u16, byte: u8) -> Result<()>;
 
-    fn write_many(&mut self, start_addr: u16, bytes: &[u8]) -> Result<(), MemoryError> {
+    fn write_many(&mut self, start_addr: u16, bytes: &[u8]) -> Result<()> {
         let mut addr = start_addr;
         for byte in bytes.iter() {
             self.write(addr, *byte)?;

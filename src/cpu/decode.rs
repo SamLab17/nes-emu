@@ -37,12 +37,13 @@ const LOOKUP: [[Tup; 16]; 2] = [
 
 // Reads byte at current PC, then advances PC
 fn read_next_byte(cpu: &mut Cpu) -> Option<u8> {
-    let byte = cpu.bus.read(cpu.reg.pc);
+    let byte = cpu.bus.read(cpu.reg.pc).ok();
     cpu.reg.pc += 1;
     byte
 }
 
-// Reads the 16-bit low endian value after the PC and converts it from low endian back to "correct" endian ;)
+// Reads the 16-bit low endian value after the PC and converts 
+// it from low endian back to the objectively-better-endian ;)
 fn read_little_endian_u16(cpu: &mut Cpu) -> Option<u16> {
     let lo = read_next_byte(cpu);
     let hi = read_next_byte(cpu);
@@ -72,7 +73,7 @@ pub fn decode_instr(cpu: &mut Cpu) -> Option<Instr> {
             M::Imp => Some(AM::Implied),
             M::Ind => read_little_endian_u16(cpu).map(|addr| AM::Indirect(addr)),
             M::XInd => read_next_byte(cpu).map(|b| AM::XIndirect(b)),
-            M::IndY => read_next_byte(cpu).map(|b| AM::IndrectY(b)),
+            M::IndY => read_next_byte(cpu).map(|b| AM::IndirectY(b)),
             M::Rel => read_next_byte(cpu).map(|b| AM::Relative(b)),
             M::Zpg => read_next_byte(cpu).map(|b| AM::ZeroPage(b)),
             M::ZpgX => read_next_byte(cpu).map(|b| AM::ZeroPageX(b)),
