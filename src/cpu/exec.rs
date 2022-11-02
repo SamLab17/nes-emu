@@ -38,6 +38,10 @@ lazy_static! {
         fn lookup_opcode_fn(op: Opcode) -> OpcodeFn {
             use Opcode::*;
             match op {
+                ADC => adc,
+                AND => and,
+                ASL => asl,
+                BCC => bcc,
                 LDA => lda,
 
                 _ => panic!("NYI")
@@ -52,7 +56,7 @@ lazy_static! {
     };
 }
 
-fn exec_instr(i: Instr, cpu: &mut Cpu) -> Result<u8> {
+pub fn exec_instr(i: Instr, cpu: &mut Cpu) -> Result<u8> {
     // Lookup opcode function
     if let Some(instr_fn) = OPCODE_FUNCTIONS.get(&i.op).map(|f: &OpcodeFn| *f) {
         let extra_cycles = instr_fn(i.mode, cpu)?;
@@ -98,6 +102,70 @@ fn set_zero_flag(cpu: &mut Cpu, val: u8) {
 /*
  *       Instruction Implementations
  */
+
+fn adc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let m = deref_byte(am, cpu)?;
+    let crossed = cross_page_boundary(am, cpu);
+    let c = if cpu.reg.status.contains(StatusFlags::CARRY) {1u8} else {0u8};
+    let a = cpu.reg.a;
+    let sum = (a as u16) + (m as u16) + (c as u16);
+
+    let masked = (sum & 0xFF) as u8;
+    cpu.reg.a = masked;
+
+    // https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
+    set_negative_flag(cpu, masked); // TODO: Is this right?
+    cpu.reg.status.set(StatusFlags::ZERO, sum == 0);
+    let carry = sum & 0xFF00 != 0;
+    cpu.reg.status.set(StatusFlags::CARRY, carry);
+    cpu.reg.status.set(StatusFlags::OVERFLOW, (is_negative(m) == is_negative(a)) && (is_negative(masked) != is_negative(a)));
+    
+    if crossed { Ok(1) } else { Ok(0) }
+}
+
+fn and(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let a = cpu.reg.a;
+    let m = deref_byte(am, cpu)?;
+    let crossed = cross_page_boundary(am, cpu);
+    cpu.reg.a = a & m;
+    set_negative_flag(cpu, cpu.reg.a);
+    set_zero_flag(cpu, cpu.reg.a);
+    
+    if crossed { Ok(1) } else { Ok(0) }
+}
+
+fn asl(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    if matches!(am, AddressingMode::Accumulator) {
+        let carry = is_negative(cpu.reg.a);
+        cpu.reg.a <<= 1;
+        cpu.reg.status.set(StatusFlags::CARRY, carry);
+        set_zero_flag(cpu, cpu.reg.a);
+        set_negative_flag(cpu, cpu.reg.a);
+    } else {
+        let addr = effective_addr(am, cpu)?;
+        let val = deref_byte(am, cpu)? << 1;
+        let carry = is_negative(val);
+        cpu.bus.write(addr, val)?;
+        cpu.reg.status.set(StatusFlags::CARRY, carry);
+        set_zero_flag(cpu, val);
+        set_negative_flag(cpu, val);
+    }
+    Ok(0)
+}
+
+fn bcc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let cross = cross_page_boundary(am, cpu);
+
+    if !cpu.reg.status.contains(StatusFlags::CARRY) {
+        let addr = deref_address(am, cpu)?;
+        cpu.reg.pc = addr;
+        if cross {Ok(2)} else {Ok(1)}
+    } else {
+        // branch not taken
+        Ok(0)
+    }
+}
+
 
 fn lda(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     cpu.reg.a = deref_byte(am, cpu)?;

@@ -1,6 +1,6 @@
 use crate::error::Result;
-use super::{isa::{Instr, AddressingMode}, reg::StatusFlags};
-use crate::{cpu::cpu::Cpu};
+use super::isa::AddressingMode;
+use crate::cpu::cpu::Cpu;
 use crate::mem::utils::make_address;
 use super::utils::is_negative;
 
