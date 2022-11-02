@@ -1,21 +1,30 @@
 use std::fmt;
-use std::{ops::{Add, Index}, collections::HashMap, error::Error};
+use std::{
+    collections::HashMap,
+    error::Error,
+    ops::{Add, Index},
+};
 
 use lazy_static::lazy_static;
 use strum::IntoEnumIterator;
 
 use crate::error::Result;
 
-use super::{isa::{Instr, AddressingMode, Opcode}, reg::StatusFlags, deref::effective_addr};
-use crate::{cpu::cpu::Cpu};
-use crate::mem::utils::{make_address, page_num};
+use super::decode::instr_lookup::num_cycles_for_instr;
 use super::utils::is_negative;
+use super::{
+    deref::effective_addr,
+    isa::{AddressingMode, Instr, Opcode},
+    reg::StatusFlags,
+};
+use crate::cpu::cpu::Cpu;
+use crate::mem::utils::{make_address, page_num};
 
-use super::deref::{deref_byte, deref_address};
+use super::deref::{deref_address, deref_byte};
 
 #[derive(Debug, Clone)]
 enum ExecutionError {
-    InvalidInstruction(Instr)
+    InvalidInstruction(Instr),
 }
 
 impl Error for ExecutionError {}
@@ -23,7 +32,9 @@ impl Error for ExecutionError {}
 impl fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ExecutionError::InvalidInstruction(i) => write!(f, "Attempted to run invalid instruction: {:?}", i)
+            ExecutionError::InvalidInstruction(i) => {
+                write!(f, "Attempted to run invalid instruction: {:?}", i)
+            }
         }
     }
 }
@@ -44,7 +55,7 @@ lazy_static! {
                 BCC => bcc,
                 LDA => lda,
 
-                _ => panic!("NYI")
+                _ => panic!("NYI"),
             }
         }
 
@@ -59,8 +70,10 @@ lazy_static! {
 pub fn exec_instr(i: Instr, cpu: &mut Cpu) -> Result<u8> {
     // Lookup opcode function
     if let Some(instr_fn) = OPCODE_FUNCTIONS.get(&i.op).map(|f: &OpcodeFn| *f) {
+        let num_cycles = num_cycles_for_instr(i).ok_or(ExecutionError::InvalidInstruction(i))?;
         let extra_cycles = instr_fn(i.mode, cpu)?;
-        Ok(i.num_cycles + extra_cycles)
+
+        Ok(num_cycles + extra_cycles)
     } else {
         Err(Box::new(ExecutionError::InvalidInstruction(i)))
     }
@@ -77,15 +90,13 @@ fn cross_page_boundary(am: AddressingMode, cpu: &Cpu) -> bool {
         IndirectY(offset) => {
             let lo = cpu.bus.read(offset as u16).unwrap();
             let hi = cpu.bus.read((offset + 1) as u16).unwrap();
-            let effective = make_address(lo, hi); 
+            let effective = make_address(lo, hi);
 
             page_num(effective) != page_num(effective + (cpu.reg.y as u16))
         }
-        Relative(_) => {
-            page_num(cpu.reg.pc) != page_num(deref_address(am, cpu).unwrap())
-        }
+        Relative(_) => page_num(cpu.reg.pc) != page_num(deref_address(am, cpu).unwrap()),
         // Other addressing modes don't cross page boundaries
-        _ => false
+        _ => false,
     }
 }
 
@@ -106,7 +117,11 @@ fn set_zero_flag(cpu: &mut Cpu, val: u8) {
 fn adc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     let m = deref_byte(am, cpu)?;
     let crossed = cross_page_boundary(am, cpu);
-    let c = if cpu.reg.status.contains(StatusFlags::CARRY) {1u8} else {0u8};
+    let c = if cpu.reg.status.contains(StatusFlags::CARRY) {
+        1u8
+    } else {
+        0u8
+    };
     let a = cpu.reg.a;
     let sum = (a as u16) + (m as u16) + (c as u16);
 
@@ -118,9 +133,16 @@ fn adc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     cpu.reg.status.set(StatusFlags::ZERO, sum == 0);
     let carry = sum & 0xFF00 != 0;
     cpu.reg.status.set(StatusFlags::CARRY, carry);
-    cpu.reg.status.set(StatusFlags::OVERFLOW, (is_negative(m) == is_negative(a)) && (is_negative(masked) != is_negative(a)));
-    
-    if crossed { Ok(1) } else { Ok(0) }
+    cpu.reg.status.set(
+        StatusFlags::OVERFLOW,
+        (is_negative(m) == is_negative(a)) && (is_negative(masked) != is_negative(a)),
+    );
+
+    if crossed {
+        Ok(1)
+    } else {
+        Ok(0)
+    }
 }
 
 fn and(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
@@ -130,8 +152,12 @@ fn and(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     cpu.reg.a = a & m;
     set_negative_flag(cpu, cpu.reg.a);
     set_zero_flag(cpu, cpu.reg.a);
-    
-    if crossed { Ok(1) } else { Ok(0) }
+
+    if crossed {
+        Ok(1)
+    } else {
+        Ok(0)
+    }
 }
 
 fn asl(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
@@ -159,13 +185,16 @@ fn bcc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     if !cpu.reg.status.contains(StatusFlags::CARRY) {
         let addr = deref_address(am, cpu)?;
         cpu.reg.pc = addr;
-        if cross {Ok(2)} else {Ok(1)}
+        if cross {
+            Ok(2)
+        } else {
+            Ok(1)
+        }
     } else {
         // branch not taken
         Ok(0)
     }
 }
-
 
 fn lda(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     cpu.reg.a = deref_byte(am, cpu)?;
@@ -206,8 +235,8 @@ fn inx(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
 
 #[cfg(test)]
 mod exec_tests {
-    use crate::cpu::cpu::Cpu;
     use super::AddressingMode::*;
+    use crate::cpu::cpu::Cpu;
 
     use super::cross_page_boundary;
 
@@ -240,7 +269,6 @@ mod exec_tests {
         cpu.bus.write(0x42, 0x00).unwrap();
         cpu.bus.write(0x43, 0x10).unwrap();
         assert!(!cross_page_boundary(IndirectY(0x42), &cpu));
-
 
         cpu.reg.pc = 0x01FF;
         // -1 jump

@@ -22,8 +22,8 @@ use super::{
 
 // Makes lookup table shorter
 // (Can't have dirty garbage)
-mod instr_lookup {
-    #[derive(Clone, Copy)]
+pub mod instr_lookup {
+    #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
     pub enum Mode {
         Acc,
         Abs,
@@ -40,8 +40,11 @@ mod instr_lookup {
         ZpgY,
     }
 
-    use crate::cpu::isa::Opcode::{self, *};
+    use std::collections::HashMap;
+
+    use crate::cpu::isa::{Opcode::{self, *}, AddressingMode, Instr};
     use Mode::*;
+    use lazy_static::lazy_static;
     type InstrTup = (Opcode, Mode, u8);
     const INV: InstrTup = (INVALID, Imp, 0);
 
@@ -62,8 +65,44 @@ mod instr_lookup {
         [(CPY, Imm, 2), (CMP, XInd, 6), INV, INV, (CPY, Zpg, 3),  (CMP, Zpg, 3),  (DEC, Zpg, 5),  INV, (INY, Imp, 2), (CMP, Imm, 2),  (DEX, Imp, 2), INV, (CPY, Abs, 4), (CMP, Abs, 4), (DEC, Abs, 6), INV],
         [(BNE, Rel, 2), (CMP, IndY, 5), INV, INV, (NOP, ZpgX, 4), (CMP, ZpgX, 4), (DEC, ZpgX, 6), INV, (CLD, Imp, 2), (CMP, AbsY, 4), (NOP, Imp, 2), INV, INV, (CMP, AbsX, 4), (DEC, AbsX, 7), INV],
         [(CPX, Imm, 2), (SBC, XInd, 6), INV, INV, (CPX, Zpg, 3),  (SBC, Zpg, 3),  (INC, Zpg, 5),  INV, (INX, Imp, 2), (SBC, Imm, 2),  (NOP, Imp, 2), INV, (CPX, Abs, 4), (SBC, Abs, 4), (INC, Abs, 6), INV],
-        [(BEQ, Rel, 2), (SBC, IndY, 5), INV, INV, (NOP, ZpgX, 4), (SBC, ZpgX, 4), (INC, ZpgX, 6), INV, (SED, Imp, 2), (SBC, AbsY, 4), (NOP, Imp, 2), INV, INV, (SBC, AbsX, 4), (INC, AbsX, 7), INV]
+        [(BEQ, Rel, 2), (SBC, IndY, 5), INV, INV, (NOP, ZpgX, 4), (SBC, ZpgX, 4), (INC, ZpgX, 6), INV, (SED, Imp, 2), (SBC, AbsY, 4), (NOP, Imp, 2), INV, INV, (SBC, AbsX, 4), (INC, AbsX, 7), INV],
     ];
+
+    // For looking up number of cycles
+    lazy_static! {
+        static ref CYCLE_LOOKUP : HashMap<(Opcode, Mode), u8> = {
+            let mut m = HashMap::new();
+            for row in LOOKUP.iter() {
+                for (op, mode, cycles) in row.iter() {
+                    m.insert((*op, *mode), *cycles);
+                }
+            }
+            m
+        };
+    }
+
+    fn address_mode_to_mode(am: AddressingMode) -> Mode {
+        use AddressingMode::*;
+        match am {
+            Accumulator => Acc,
+            Absolute(_) => Abs,
+            AbsoluteX(_) => AbsX,
+            AbsoluteY(_) => AbsY,
+            Immediate(_) => Imm,
+            Implied => Imp,
+            Indirect(_) => Ind,
+            XIndirect(_) => XInd,
+            IndirectY(_) => IndY,
+            Relative(_) => Rel,
+            ZeroPage(_) => Zpg,
+            ZeroPageX(_) => ZpgX,
+            ZeroPageY(_) => ZpgY,
+        }
+    }
+
+    pub fn num_cycles_for_instr(i: Instr) -> Option<u8> {
+        CYCLE_LOOKUP.get(&(i.op, address_mode_to_mode(i.mode))).map(|n| {*n})
+    }
 }
 
 // Reads byte at current PC, then advances PC
@@ -86,7 +125,7 @@ pub fn decode_instr(cpu: &mut Cpu) -> Result<Instr> {
     let row = (next_instr & 0xF0) >> 4;
     let col = next_instr & 0xF;
 
-    let (opcode, mode, n_cycles) = instr_lookup::LOOKUP[row as usize][col as usize];
+    let (opcode, mode, _) = instr_lookup::LOOKUP[row as usize][col as usize];
     if opcode == Opcode::INVALID {
         return Err(Box::new(DecodeError::InvalidOpcode(next_instr)))
     }
@@ -113,7 +152,6 @@ pub fn decode_instr(cpu: &mut Cpu) -> Result<Instr> {
     address_mode.map(|am| Instr {
         op: opcode,
         mode: am,
-        num_cycles: n_cycles,
     })
 } 
 
@@ -121,23 +159,24 @@ pub fn decode_instr(cpu: &mut Cpu) -> Result<Instr> {
 mod decode_tests {
     use crate::cpu::{
         cpu::Cpu,
-        isa::{AddressingMode, Instr, Opcode},
+        isa::{AddressingMode, Instr, Opcode}, decode::instr_lookup::num_cycles_for_instr,
     };
 
     use super::decode_instr;
 
-    fn check_decode(binary: &[u8], op: Opcode, am: AddressingMode, n: u8) {
+    // Checks proper decode of instruction (get correct instruction, read correct # of bytes) and
+    // and checks the # of cycles for the instruction 
+    fn check_decode(binary: &[u8], op: Opcode, am: AddressingMode, n_cycles: u8) {
         let mut cpu = Cpu::mock(binary);
         cpu.reg.pc = 0;
+        let instr = Instr { op: op, mode: am };
+
         assert_eq!(
             decode_instr(&mut cpu).unwrap(),
-            Instr {
-                op: op,
-                mode: am,
-                num_cycles: n
-            }
+            instr
         );
-        assert_eq!(binary.len(), cpu.reg.pc as usize)
+        assert_eq!(binary.len(), cpu.reg.pc as usize);
+        assert_eq!(num_cycles_for_instr(instr).unwrap(), n_cycles);
     }
 
     #[test]
@@ -146,53 +185,7 @@ mod decode_tests {
         use Opcode::*;
         check_decode(&[0x1D, 0xEF, 0xBE], ORA, AbsoluteX(0xBEEF), 4);
         check_decode(&[0x0E, 0xFE, 0xCA], ASL, Absolute(0xCAFE), 6);
-    }
-
-    #[test]
-    fn multiple_decode_test() {
-        let instrs = [
-            0x1D, 0xEF, 0xBE, // ORA absX $BEEF
-            0x0E, 0xFE, 0xCA, // ASL abs $CAFE
-            0x15, 0xBB, // ORA zpgX $BB
-            0x08, // PHP
-        ];
-        let mut cpu = Cpu::mock(&instrs);
-        cpu.reg.pc = 0;
-
-        assert_eq!(
-            decode_instr(&mut cpu).unwrap(),
-            Instr {
-                op: Opcode::ORA,
-                mode: AddressingMode::AbsoluteX(0xBEEF),
-                num_cycles: 4
-            }
-        );
-
-        assert_eq!(
-            decode_instr(&mut cpu).unwrap(),
-            Instr {
-                op: Opcode::ASL,
-                mode: AddressingMode::Absolute(0xCAFE),
-                num_cycles: 6
-            }
-        );
-
-        assert_eq!(
-            decode_instr(&mut cpu).unwrap(),
-            Instr {
-                op: Opcode::ORA,
-                mode: AddressingMode::ZeroPageX(0xBB),
-                num_cycles: 4
-            }
-        );
-
-        assert_eq!(
-            decode_instr(&mut cpu).unwrap(),
-            Instr {
-                op: Opcode::PHP,
-                mode: AddressingMode::Implied,
-                num_cycles: 3
-            }
-        );
+        check_decode(&[0x15, 0xBB], ORA, ZeroPageX(0xBB), 4);
+        check_decode(&[0x08], PHP, Implied, 3);
     }
 }
