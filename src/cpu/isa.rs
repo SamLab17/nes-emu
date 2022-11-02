@@ -1,3 +1,5 @@
+use strum_macros::EnumIter;
+
 use crate::{cpu::{reg::Registers, cpu::Cpu}, mem::device::{MemoryDevice, MemoryError}};
 use std::fmt;
 
@@ -18,7 +20,7 @@ pub enum AddressingMode {
     ZeroPageY(u8)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, EnumIter)]
 pub enum Opcode {
     ADC,
     AND,

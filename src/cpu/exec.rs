@@ -1,20 +1,70 @@
-use std::ops::Add;
+use std::fmt;
+use std::{ops::{Add, Index}, collections::HashMap, error::Error};
+
+use lazy_static::lazy_static;
+use strum::IntoEnumIterator;
 
 use crate::error::Result;
 
-use super::{isa::{Instr, AddressingMode}, reg::StatusFlags, deref::effective_addr};
+use super::{isa::{Instr, AddressingMode, Opcode}, reg::StatusFlags, deref::effective_addr};
 use crate::{cpu::cpu::Cpu};
 use crate::mem::utils::{make_address, page_num};
 use super::utils::is_negative;
 
 use super::deref::{deref_byte, deref_address};
 
-// Returns number of cycles this instruction needs
-pub fn exec_instr(i: Instr, cpu: &mut Cpu) -> Result<u8> {
-    Ok(0)
+#[derive(Debug, Clone)]
+enum ExecutionError {
+    InvalidInstruction(Instr)
 }
 
+impl Error for ExecutionError {}
 
+impl fmt::Display for ExecutionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ExecutionError::InvalidInstruction(i) => write!(f, "Attempted to run invalid instruction: {:?}", i)
+        }
+    }
+}
+
+// Function which implements the behavior of an instruction
+// returns the number of _extra_ cycles needed to run the instruction
+// (this extra will be added to number of cycles in instruction matrix)
+type OpcodeFn = fn(AddressingMode, &mut Cpu) -> Result<u8>;
+
+lazy_static! {
+    static ref OPCODE_FUNCTIONS: HashMap<Opcode, OpcodeFn> = {
+        fn lookup_opcode_fn(op: Opcode) -> OpcodeFn {
+            use Opcode::*;
+            match op {
+                LDA => lda,
+
+                _ => panic!("NYI")
+            }
+        }
+
+        let mut m = HashMap::new();
+        for opcode in Opcode::iter() {
+            m.insert(opcode, lookup_opcode_fn(opcode));
+        }
+        m
+    };
+}
+
+fn exec_instr(i: Instr, cpu: &mut Cpu) -> Result<u8> {
+    // Lookup opcode function
+    if let Some(instr_fn) = OPCODE_FUNCTIONS.get(&i.op).map(|f: &OpcodeFn| *f) {
+        let extra_cycles = instr_fn(i.mode, cpu)?;
+        Ok(i.num_cycles + extra_cycles)
+    } else {
+        Err(Box::new(ExecutionError::InvalidInstruction(i)))
+    }
+    // Run instruction
+}
+
+// Returns whether this addressing mode will cross a page boundary
+// (which typically incurs an extra cycle cost)
 fn cross_page_boundary(am: AddressingMode, cpu: &Cpu) -> bool {
     use AddressingMode::*;
     match am {
@@ -35,16 +85,20 @@ fn cross_page_boundary(am: AddressingMode, cpu: &Cpu) -> bool {
     }
 }
 
+// Conditionally set the "Negative" status flag based on a value
 fn set_negative_flag(cpu: &mut Cpu, val: u8) {
     cpu.reg.status.set(StatusFlags::NEGATIVE, is_negative(val));
 }
 
+// Conditionally set the "Zero" status flag based on a value
 fn set_zero_flag(cpu: &mut Cpu, val: u8) {
     cpu.reg.status.set(StatusFlags::ZERO, val == 0);
 }
 
-// Returns extra # of cycles needed to run (this extra will be added to number
-// of cycles in instruction matrix)
+/*
+ *       Instruction Implementations
+ */
+
 fn lda(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     cpu.reg.a = deref_byte(am, cpu)?;
     // Check if we cross a boundary before updating any state!
