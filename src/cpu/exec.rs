@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::Add;
 use std::{collections::HashMap, error::Error};
 
 use lazy_static::lazy_static;
@@ -85,8 +86,24 @@ lazy_static! {
                 PHP => php,
                 PLA => pla,
                 PLP => plp,
-
-                _ => panic!("NYI"),
+                ROL => rol,
+                ROR => ror,
+                RTI => rti,
+                RTS => rts,
+                SBC => sbc,
+                SEC => sec,
+                SED => sed,
+                SEI => sei,
+                STA => sta,
+                STX => stx,
+                STY => sty,
+                TAX => tax,
+                TAY => tay,
+                TSX => tsx,
+                TXA => txa,
+                TXS => txs,
+                TYA => tya,
+                INVALID => invalid_op,
             }
         }
 
@@ -100,15 +117,23 @@ lazy_static! {
 
 pub fn exec_instr(i: Instr, cpu: &mut Cpu) -> Result<u8> {
     // Lookup opcode function
-    if let Some(instr_fn) = OPCODE_FUNCTIONS.get(&i.op).map(|f: &OpcodeFn| *f) {
-        let num_cycles = num_cycles_for_instr(i).ok_or(ExecutionError::InvalidInstruction(i))?;
-        let extra_cycles = instr_fn(i.mode, cpu)?;
+    let instr_fn = OPCODE_FUNCTIONS
+        .get(&i.op)
+        .map(|f: &OpcodeFn| *f)
+        .unwrap_or(invalid_op);
 
-        Ok(num_cycles + extra_cycles)
-    } else {
-        Err(Box::new(ExecutionError::InvalidInstruction(i)))
-    }
     // Run instruction
+    let extra_cycles = instr_fn(i.mode, cpu)?;
+
+    let num_cycles = num_cycles_for_instr(i).ok_or(ExecutionError::InvalidInstruction(i))?;
+    Ok(num_cycles + extra_cycles)
+}
+
+fn invalid_op(am: AddressingMode, _: &mut Cpu) -> Result<u8> {
+    Err(Box::new(ExecutionError::InvalidInstruction(Instr {
+        op: Opcode::INVALID,
+        mode: am,
+    })))
 }
 
 // Returns whether this addressing mode will cross a page boundary
@@ -535,6 +560,187 @@ fn plp(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     // Invalid flags should never happen, we use all 8 bits
     cpu.reg.status =
         StatusFlags::from_bits(pop_stack(cpu)?).expect("Flags popped from stack invalid.");
+    Ok(0)
+}
+
+fn rol(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let carry = if cpu.reg.status.contains(StatusFlags::CARRY) {
+        1
+    } else {
+        0
+    };
+    if matches!(am, AddressingMode::Accumulator) {
+        let a = cpu.reg.a;
+        let new_carry = is_negative(a);
+        let rot = ((a as u16) << 1) | carry;
+        let masked = (rot & 0xFF) as u8;
+        cpu.reg.status.set(StatusFlags::CARRY, new_carry);
+        set_negative_flag(cpu, masked);
+        set_zero_flag(cpu, masked);
+
+        cpu.reg.a = masked;
+    } else {
+        let addr = effective_addr(am, cpu)?;
+        let m = deref_byte(am, cpu)?;
+        let new_carry = is_negative(m);
+        let rot = ((m as u16) << 1) | carry;
+        let masked = (rot & 0xFF) as u8;
+
+        cpu.reg.status.set(StatusFlags::CARRY, new_carry);
+        set_negative_flag(cpu, masked);
+        set_zero_flag(cpu, masked);
+        cpu.bus.write(addr, m)?;
+    }
+    Ok(0)
+}
+
+fn ror(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let carry = if cpu.reg.status.contains(StatusFlags::CARRY) {
+        0x80
+    } else {
+        0
+    };
+    if matches!(am, AddressingMode::Accumulator) {
+        let a = cpu.reg.a;
+        let new_carry = a & 1 == 1;
+        let rot = ((a as u16) >> 1) | carry;
+        let masked = (rot & 0xFF) as u8;
+
+        cpu.reg.status.set(StatusFlags::CARRY, new_carry);
+        set_negative_flag(cpu, masked);
+        set_zero_flag(cpu, masked);
+        cpu.reg.a = masked;
+    } else {
+        let addr = effective_addr(am, cpu)?;
+        let m = deref_byte(am, cpu)?;
+        let new_carry = m & 1 == 1;
+        let rot = ((m as u16) >> 1) | carry;
+        let masked = (rot & 0xFF) as u8;
+
+        cpu.reg.status.set(StatusFlags::CARRY, new_carry);
+        set_negative_flag(cpu, masked);
+        set_zero_flag(cpu, masked);
+        cpu.bus.write(addr, m)?;
+    }
+    Ok(0)
+}
+
+fn rti(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let mut status = StatusFlags::from_bits(pop_stack(cpu)?)
+        .expect("Status flags popped from stack are invalid.");
+    status.remove(StatusFlags::BREAK);
+    status.remove(StatusFlags::UNUSED);
+    cpu.reg.status = status;
+
+    cpu.reg.pc = pop_stack_addr(cpu)?;
+    Ok(0)
+}
+
+fn rts(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.pc = pop_stack_addr(cpu)?;
+    Ok(0)
+}
+
+fn sbc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    // A - M - ~C = A + -M - ~C = A + ~M + 1 - (1-C) = A + ~M + C
+    let crossed = cross_page_boundary(am, cpu);
+
+    let a = cpu.reg.a;
+    let m = deref_byte(am, cpu)?;
+    let carry: u16 = if cpu.reg.status.contains(StatusFlags::CARRY) {
+        1
+    } else {
+        0
+    };
+    let res = (a as u16) + (!m as u16) + carry;
+    let masked = (res & 0xFF) as u8;
+
+    cpu.reg.a = masked;
+    set_negative_flag(cpu, cpu.reg.a);
+    set_zero_flag(cpu, cpu.reg.a);
+    cpu.reg.status.set(StatusFlags::CARRY, res & 0xFF00 != 0);
+
+    cpu.reg.status.set(
+        StatusFlags::OVERFLOW,
+        is_negative(a) != is_negative(m) && is_negative(m) == (carry == 1),
+    );
+    if crossed {
+        Ok(1)
+    } else {
+        Ok(0)
+    }
+}
+
+fn sec(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.status.insert(StatusFlags::CARRY);
+    Ok(0)
+}
+
+fn sed(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.status.insert(StatusFlags::DECIMAL);
+    Ok(0)
+}
+
+fn sei(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.status.insert(StatusFlags::INTERRUPT_DISABLE);
+    Ok(0)
+}
+
+fn sta(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let addr = effective_addr(am, cpu)?;
+    cpu.bus.write(addr, cpu.reg.a)?;
+    Ok(0)
+}
+
+fn stx(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let addr = effective_addr(am, cpu)?;
+    cpu.bus.write(addr, cpu.reg.x)?;
+    Ok(0)
+}
+
+fn sty(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let addr = effective_addr(am, cpu)?;
+    cpu.bus.write(addr, cpu.reg.y)?;
+    Ok(0)
+}
+
+fn tax(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.x = cpu.reg.a;
+    set_negative_flag(cpu, cpu.reg.x);
+    set_zero_flag(cpu, cpu.reg.x);
+    Ok(0)
+}
+
+fn tay(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.y = cpu.reg.a;
+    set_negative_flag(cpu, cpu.reg.y);
+    set_zero_flag(cpu, cpu.reg.y);
+    Ok(0)
+}
+
+fn tsx(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.x = cpu.reg.sp;
+    set_negative_flag(cpu, cpu.reg.x);
+    set_zero_flag(cpu, cpu.reg.x);
+    Ok(0)
+}
+
+fn txa(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.a = cpu.reg.x;
+    set_negative_flag(cpu, cpu.reg.a);
+    set_zero_flag(cpu, cpu.reg.a);
+    Ok(0)
+}
+
+fn txs(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.sp = cpu.reg.x;
+    Ok(0)
+}
+
+fn tya(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.a = cpu.reg.y;
+    set_negative_flag(cpu, cpu.reg.a);
+    set_zero_flag(cpu, cpu.reg.a);
     Ok(0)
 }
 
