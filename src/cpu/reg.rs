@@ -1,11 +1,13 @@
 use bitflags::bitflags;
 use std::fmt;
 
+use super::cpu;
+
 bitflags! {
     pub struct StatusFlags: u8 {
         const CARRY = 0b00000001;
         const ZERO = 0b00000010;
-        const INTERRUPTABLE = 0b00000100;
+        const INTERRUPT_DISABLE = 0b00000100;
         const DECIMAL = 0b0000100;
         const BREAK = 0b0001000;
         const UNUSED = 0b00100000;

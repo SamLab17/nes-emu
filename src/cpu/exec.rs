@@ -2,7 +2,6 @@ use std::fmt;
 use std::{
     collections::HashMap,
     error::Error,
-    ops::{Add, Index},
 };
 
 use lazy_static::lazy_static;
@@ -10,6 +9,7 @@ use strum::IntoEnumIterator;
 
 use crate::error::Result;
 
+use super::cpu::{STACK_OFFSET, Interrupt};
 use super::decode::instr_lookup::num_cycles_for_instr;
 use super::utils::is_negative;
 use super::{
@@ -18,7 +18,7 @@ use super::{
     reg::StatusFlags,
 };
 use crate::cpu::cpu::Cpu;
-use crate::mem::utils::{make_address, page_num};
+use crate::mem::utils::{make_address, page_num, hi_byte, lo_byte};
 
 use super::deref::{deref_address, deref_byte};
 
@@ -53,7 +53,41 @@ lazy_static! {
                 AND => and,
                 ASL => asl,
                 BCC => bcc,
+                BCS => bcs,
+                BEQ => beq,
+                BIT => bit,
+                BMI => bmi,
+                BNE => bne,
+                BPL => bpl,
+                BRK => brk,
+                BVC => bvc,
+                BVS => bvs,
+                CLC => clc,
+                CLD => cld,
+                CLI => cli,
+                CLV => clv,
+                CMP => cmp,
+                CPX => cpx,
+                CPY => cpy,
+                DEC => dec,
+                DEX => dex,
+                DEY => dey,
+                EOR => eor,
+                INC => inc,
+                INX => inx,
+                INY => iny,
+                JMP => jmp,
+                JSR => jsr,
                 LDA => lda,
+                LDX => ldx,
+                LDY => ldy,
+                LSR => lsr,
+                NOP => nop,
+                ORA => ora,
+                PHA => pha,
+                PHP => php,
+                PLA => pla,
+                PLP => plp,
 
                 _ => panic!("NYI"),
             }
@@ -114,6 +148,58 @@ fn set_zero_flag(cpu: &mut Cpu, val: u8) {
  *       Instruction Implementations
  */
 
+fn push_stack(cpu: &mut Cpu, byte: u8) -> Result<()> {
+    let sp = (cpu.reg.sp as u16) + STACK_OFFSET;
+    cpu.bus.write(sp, byte)?;
+    cpu.reg.sp -= 1;
+    Ok(())
+}
+
+fn push_stack_addr(cpu: &mut Cpu, addr: u16) -> Result<()> {
+    push_stack(cpu, hi_byte(addr))?;
+    push_stack(cpu, lo_byte(addr))?;
+    Ok(())
+}
+
+fn pop_stack(cpu: &mut Cpu) -> Result<u8> {
+    let sp = (cpu.reg.sp as u16) + STACK_OFFSET;
+    let val = cpu.bus.read(sp)?;
+    cpu.reg.sp += 1;
+    Ok(val)
+}
+
+fn pop_stack_addr(cpu: &mut Cpu) -> Result<u16> {
+    Ok(make_address(pop_stack(cpu)?, pop_stack(cpu)?))
+}
+
+fn branch_on_predicate(am: AddressingMode, cpu: &mut Cpu, take_branch: bool) -> Result<u8> {
+    let cross = cross_page_boundary(am, cpu);
+
+    if take_branch {
+        let addr = deref_address(am, cpu)?;
+        cpu.reg.pc = addr;
+        if cross {
+            Ok(2)
+        } else {
+            Ok(1)
+        }
+    } else {
+        // branch not taken
+        Ok(0)
+    } 
+}
+
+fn compare(am: AddressingMode, cpu: &mut Cpu, val: u8) -> Result<u8> {
+    let cross = cross_page_boundary(am, cpu);
+    let m = deref_byte(am, cpu)?;
+    let diff = val - m;
+
+    cpu.reg.status.set(StatusFlags::NEGATIVE, diff & 0x80 != 0);
+    cpu.reg.status.set(StatusFlags::ZERO, m == val);
+    cpu.reg.status.set(StatusFlags::CARRY, val >= m);
+    if cross { Ok(1) } else { Ok(0) }
+}
+
 fn adc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     let m = deref_byte(am, cpu)?;
     let crossed = cross_page_boundary(am, cpu);
@@ -129,8 +215,8 @@ fn adc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     cpu.reg.a = masked;
 
     // https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-    set_negative_flag(cpu, masked); // TODO: Is this right?
-    cpu.reg.status.set(StatusFlags::ZERO, sum == 0);
+    set_negative_flag(cpu, masked); 
+    set_zero_flag(cpu, masked);
     let carry = sum & 0xFF00 != 0;
     cpu.reg.status.set(StatusFlags::CARRY, carry);
     cpu.reg.status.set(
@@ -169,31 +255,170 @@ fn asl(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
         set_negative_flag(cpu, cpu.reg.a);
     } else {
         let addr = effective_addr(am, cpu)?;
-        let val = deref_byte(am, cpu)? << 1;
+        let val = deref_byte(am, cpu)?;
         let carry = is_negative(val);
-        cpu.bus.write(addr, val)?;
+        cpu.bus.write(addr, val << 1)?;
         cpu.reg.status.set(StatusFlags::CARRY, carry);
-        set_zero_flag(cpu, val);
-        set_negative_flag(cpu, val);
+        set_zero_flag(cpu, val << 1);
+        set_negative_flag(cpu, val << 1);
     }
     Ok(0)
 }
 
 fn bcc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
-    let cross = cross_page_boundary(am, cpu);
+    branch_on_predicate(am, cpu, !cpu.reg.status.contains(StatusFlags::CARRY))
+}
 
-    if !cpu.reg.status.contains(StatusFlags::CARRY) {
-        let addr = deref_address(am, cpu)?;
-        cpu.reg.pc = addr;
-        if cross {
-            Ok(2)
-        } else {
-            Ok(1)
-        }
-    } else {
-        // branch not taken
-        Ok(0)
-    }
+fn bcs(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    branch_on_predicate(am, cpu, cpu.reg.status.contains(StatusFlags::CARRY))
+}
+
+fn beq(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    branch_on_predicate(am, cpu, cpu.reg.status.contains(StatusFlags::ZERO))
+}
+
+fn bit(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let m = deref_byte(am, cpu)?;
+    cpu.reg.status.set(StatusFlags::NEGATIVE, m & 0b10000000 != 0);
+    cpu.reg.status.set(StatusFlags::OVERFLOW, m & 0b01000000 != 0);
+    set_zero_flag(cpu, cpu.reg.a & m);
+    Ok(0)
+}
+
+fn bmi(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    branch_on_predicate(am, cpu, cpu.reg.status.contains(StatusFlags::NEGATIVE))
+}
+
+fn bne(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    branch_on_predicate(am, cpu, !cpu.reg.status.contains(StatusFlags::ZERO))
+}
+
+fn bpl(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    branch_on_predicate(am, cpu, !cpu.reg.status.contains(StatusFlags::NEGATIVE))
+}
+
+fn brk(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let mut pc = cpu.reg.pc;
+    pc += 2;
+    push_stack_addr(cpu, pc)?;
+
+    let mut flags = cpu.reg.status.clone();
+    flags.insert(StatusFlags::BREAK);
+    push_stack(cpu, cpu.reg.status.bits())?;
+
+    cpu.reg.status.insert(StatusFlags::INTERRUPT_DISABLE);
+    cpu.interrupt = Some(Interrupt::Request);
+
+    Ok(0)
+}
+
+fn bvc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    branch_on_predicate(am, cpu, !cpu.reg.status.contains(StatusFlags::OVERFLOW))
+}
+
+fn bvs(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    branch_on_predicate(am, cpu, cpu.reg.status.contains(StatusFlags::OVERFLOW))
+}
+
+fn clc(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.status.remove(StatusFlags::CARRY);
+    Ok(0)
+}
+
+fn cld(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.status.remove(StatusFlags::DECIMAL);
+    Ok(0)
+}
+
+fn cli(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.status.remove(StatusFlags::INTERRUPT_DISABLE);
+    Ok(0)
+}
+
+fn clv(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.status.remove(StatusFlags::OVERFLOW);
+    Ok(0)
+}
+
+fn cmp(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    compare(am, cpu, cpu.reg.a)
+}
+
+fn cpx(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    compare(am, cpu, cpu.reg.x)
+}
+
+fn cpy(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    compare(am, cpu, cpu.reg.y)
+}
+
+fn dec(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let e = effective_addr(am, cpu)?;
+    let val = deref_byte(am, cpu)? - 1;
+    cpu.bus.write(e, val)?;
+    set_negative_flag(cpu, val);
+    set_zero_flag(cpu, val);
+    Ok(0)
+}
+
+fn dex(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.x -= 1;
+    set_negative_flag(cpu, cpu.reg.x);
+    set_zero_flag(cpu, cpu.reg.x);
+    Ok(0)
+}
+
+fn dey(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.y -= 1;
+    set_negative_flag(cpu, cpu.reg.y);
+    set_zero_flag(cpu, cpu.reg.y);
+    Ok(0)
+}
+
+fn eor(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let cross = cross_page_boundary(am, cpu);
+    let m = deref_byte(am, cpu)?;
+
+    cpu.reg.a ^= m;
+
+    set_negative_flag(cpu, cpu.reg.a);
+    set_zero_flag(cpu, cpu.reg.a);
+    if cross {Ok(1)} else {Ok(0)}
+}
+
+fn inc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let addr = effective_addr(am, cpu)?;
+    let val = cpu.bus.read(addr)? + 1;
+    cpu.bus.write(addr, val)?;
+
+    set_negative_flag(cpu, val);
+    set_zero_flag(cpu, val);
+    Ok(0)
+}
+
+fn inx(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.x += 1;
+    set_negative_flag(cpu, cpu.reg.x);
+    set_zero_flag(cpu, cpu.reg.x);
+    Ok(0)
+}
+
+fn iny(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.y += 1;
+    set_negative_flag(cpu, cpu.reg.y);
+    set_zero_flag(cpu, cpu.reg.y);
+    Ok(0)
+}
+
+fn jmp(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.pc = deref_address(am, cpu)?;
+    Ok(0)
+}
+
+fn jsr(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    push_stack_addr(cpu, cpu.reg.pc + 2)?;
+    cpu.reg.pc = deref_address(am, cpu)?;
+    Ok(0)
 }
 
 fn lda(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
@@ -211,27 +436,95 @@ fn lda(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     }
 }
 
-fn jmp(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
-    cpu.reg.pc = deref_address(am, cpu)?;
-    Ok(0)
-}
+fn ldx(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.x = deref_byte(am, cpu)?;
+    let crossed = cross_page_boundary(am, cpu);
 
-fn inc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
-    let addr = effective_addr(am, cpu)?;
-    let val = cpu.bus.read(addr)? + 1;
-    cpu.bus.write(addr, val)?;
-
-    set_negative_flag(cpu, val);
-    set_zero_flag(cpu, val);
-    Ok(0)
-}
-
-fn inx(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
-    cpu.reg.x += 1;
     set_negative_flag(cpu, cpu.reg.x);
     set_zero_flag(cpu, cpu.reg.x);
+
+    if crossed {
+        Ok(1)
+    } else {
+        Ok(0)
+    }
+}
+
+fn ldy(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.y = deref_byte(am, cpu)?;
+    let crossed = cross_page_boundary(am, cpu);
+
+    set_negative_flag(cpu, cpu.reg.y);
+    set_zero_flag(cpu, cpu.reg.y);
+
+    if crossed {
+        Ok(1)
+    } else {
+        Ok(0)
+    }
+}
+
+fn lsr(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    if matches!(am, AddressingMode::Accumulator) {
+        let carry = cpu.reg.a & 0b1 == 1;
+        cpu.reg.a >>= 1;
+        cpu.reg.status.set(StatusFlags::CARRY, carry);
+        set_zero_flag(cpu, cpu.reg.a);
+        cpu.reg.status.remove(StatusFlags::NEGATIVE);
+    } else {
+        let addr = effective_addr(am, cpu)?;
+        let val = deref_byte(am, cpu)?;
+        let carry = val & 0b1 == 1;
+        cpu.bus.write(addr, val >> 1)?;
+
+        cpu.reg.status.set(StatusFlags::CARRY, carry);
+        set_zero_flag(cpu, val >> 1);
+        cpu.reg.status.remove(StatusFlags::NEGATIVE);
+    } 
+    Ok(0)
+
+}
+
+fn nop(_: AddressingMode, _: &mut Cpu) -> Result<u8> {
     Ok(0)
 }
+
+fn ora(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let cross = cross_page_boundary(am, cpu);
+    let m = deref_byte(am, cpu)?;
+    cpu.reg.a |= m;
+
+    set_negative_flag(cpu, cpu.reg.a);
+    set_zero_flag(cpu, cpu.reg.a);
+    if cross {Ok(1)} else {Ok(0)}
+}
+
+fn pha(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    push_stack(cpu, cpu.reg.a)?;
+    Ok(0)
+}
+
+fn php(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    let mut flags = cpu.reg.status.clone();
+    flags.insert(StatusFlags::BREAK);
+    flags.insert(StatusFlags::UNUSED);
+    push_stack(cpu, flags.bits())?;
+    Ok(0)
+}
+
+fn pla(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    cpu.reg.a = pop_stack(cpu)?;
+    set_zero_flag(cpu, cpu.reg.a);
+    set_negative_flag(cpu, cpu.reg.a);
+    Ok(0)
+}
+
+fn plp(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+    // Invalid flags should never happen, we use all 8 bits
+    cpu.reg.status = StatusFlags::from_bits(pop_stack(cpu)?).expect("Flags popped from stack invalid.");
+    Ok(0)
+}
+
 
 #[cfg(test)]
 mod exec_tests {
