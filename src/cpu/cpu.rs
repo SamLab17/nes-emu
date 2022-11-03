@@ -1,9 +1,9 @@
 use super::decode::decode_instr;
 use super::exec::exec_instr;
 use super::reg::{Registers, StatusFlags};
+use crate::error::Result;
 use crate::mem::utils::make_address;
 use crate::mem::{bus::MemoryBus, device::MemoryDevice, ram::Ram};
-use crate::error::Result;
 
 pub const STACK_OFFSET: u16 = 0x1000;
 
@@ -11,7 +11,7 @@ pub const STACK_OFFSET: u16 = 0x1000;
 pub enum Interrupt {
     Request,
     Reset,
-    NonMaskable
+    NonMaskable,
 }
 
 impl Interrupt {
@@ -19,7 +19,7 @@ impl Interrupt {
         match self {
             Self::Request => 0xFFFA,
             Self::Reset => 0xFFFC,
-            Self::NonMaskable => 0xFFFE
+            Self::NonMaskable => 0xFFFE,
         }
     }
 }
@@ -27,7 +27,7 @@ impl Interrupt {
 pub struct Cpu {
     pub reg: Registers,
     pub bus: Box<dyn MemoryDevice>,
-    pub interrupt: Option<Interrupt>
+    pub interrupt: Option<Interrupt>,
 }
 
 impl Cpu {
@@ -53,12 +53,12 @@ impl Cpu {
             let interrupts_enabled = !self.reg.status.contains(StatusFlags::INTERRUPT_DISABLE);
             if matches!(interrupt, Interrupt::NonMaskable) || interrupts_enabled {
                 let vector = interrupt.vector();
-                let isr_addr = make_address(self.bus.read(vector)?, self.bus.read(vector+1)?);
-                // Jump to Interrupt Handler 
+                let isr_addr = make_address(self.bus.read(vector)?, self.bus.read(vector + 1)?);
+                // Jump to Interrupt Handler
                 self.reg.pc = isr_addr;
             }
         }
-        
+
         // Decode and run the next instruction
         exec_instr(decode_instr(self)?, self)
     }

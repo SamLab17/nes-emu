@@ -27,7 +27,7 @@ pub struct Registers {
     pub y: u8,
     pub pc: u16,
     pub sp: u8,
-    pub status: StatusFlags
+    pub status: StatusFlags,
 }
 
 impl fmt::Display for Registers {

@@ -1,5 +1,5 @@
-use std::{fmt, error::Error};
 use crate::error::Result;
+use std::{error::Error, fmt};
 
 #[derive(Debug, Clone, Copy)]
 pub enum MemoryError {
@@ -8,12 +8,12 @@ pub enum MemoryError {
 }
 
 impl Error for MemoryError {
-   fn description(&self) -> &str {
+    fn description(&self) -> &str {
         match self {
             MemoryError::ReadOnly(_) => "Address is read-only",
-            MemoryError::InvalidAddress(_) => "Address is invalid" 
+            MemoryError::InvalidAddress(_) => "Address is invalid",
         }
-   }
+    }
 }
 
 impl fmt::Display for MemoryError {

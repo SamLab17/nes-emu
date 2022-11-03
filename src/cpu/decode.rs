@@ -1,6 +1,6 @@
-use std::{fmt, error::Error};
 use crate::error::Result;
 use crate::{cpu::isa::AddressingMode, mem::utils::make_address};
+use std::{error::Error, fmt};
 
 #[derive(Debug, Clone)]
 enum DecodeError {
@@ -42,9 +42,12 @@ pub mod instr_lookup {
 
     use std::collections::HashMap;
 
-    use crate::cpu::isa::{Opcode::{self, *}, AddressingMode, Instr};
-    use Mode::*;
+    use crate::cpu::isa::{
+        AddressingMode, Instr,
+        Opcode::{self, *},
+    };
     use lazy_static::lazy_static;
+    use Mode::*;
     type InstrTup = (Opcode, Mode, u8);
     const INV: InstrTup = (INVALID, Imp, 0);
 
@@ -70,7 +73,7 @@ pub mod instr_lookup {
 
     // For looking up number of cycles
     lazy_static! {
-        static ref CYCLE_LOOKUP : HashMap<(Opcode, Mode), u8> = {
+        static ref CYCLE_LOOKUP: HashMap<(Opcode, Mode), u8> = {
             let mut m = HashMap::new();
             for row in LOOKUP.iter() {
                 for (op, mode, cycles) in row.iter() {
@@ -101,7 +104,9 @@ pub mod instr_lookup {
     }
 
     pub fn num_cycles_for_instr(i: Instr) -> Option<u8> {
-        CYCLE_LOOKUP.get(&(i.op, address_mode_to_mode(i.mode))).map(|n| {*n})
+        CYCLE_LOOKUP
+            .get(&(i.op, address_mode_to_mode(i.mode)))
+            .map(|n| *n)
     }
 }
 
@@ -127,7 +132,7 @@ pub fn decode_instr(cpu: &mut Cpu) -> Result<Instr> {
 
     let (opcode, mode, _) = instr_lookup::LOOKUP[row as usize][col as usize];
     if opcode == Opcode::INVALID {
-        return Err(Box::new(DecodeError::InvalidOpcode(next_instr)))
+        return Err(Box::new(DecodeError::InvalidOpcode(next_instr)));
     }
 
     // functors an dat
@@ -153,28 +158,26 @@ pub fn decode_instr(cpu: &mut Cpu) -> Result<Instr> {
         op: opcode,
         mode: am,
     })
-} 
+}
 
 #[cfg(test)]
 mod decode_tests {
     use crate::cpu::{
         cpu::Cpu,
-        isa::{AddressingMode, Instr, Opcode}, decode::instr_lookup::num_cycles_for_instr,
+        decode::instr_lookup::num_cycles_for_instr,
+        isa::{AddressingMode, Instr, Opcode},
     };
 
     use super::decode_instr;
 
     // Checks proper decode of instruction (get correct instruction, read correct # of bytes) and
-    // and checks the # of cycles for the instruction 
+    // and checks the # of cycles for the instruction
     fn check_decode(binary: &[u8], op: Opcode, am: AddressingMode, n_cycles: u8) {
         let mut cpu = Cpu::mock(binary);
         cpu.reg.pc = 0;
         let instr = Instr { op: op, mode: am };
 
-        assert_eq!(
-            decode_instr(&mut cpu).unwrap(),
-            instr
-        );
+        assert_eq!(decode_instr(&mut cpu).unwrap(), instr);
         assert_eq!(binary.len(), cpu.reg.pc as usize);
         assert_eq!(num_cycles_for_instr(instr).unwrap(), n_cycles);
     }

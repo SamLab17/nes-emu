@@ -1,15 +1,12 @@
 use std::fmt;
-use std::{
-    collections::HashMap,
-    error::Error,
-};
+use std::{collections::HashMap, error::Error};
 
 use lazy_static::lazy_static;
 use strum::IntoEnumIterator;
 
 use crate::error::Result;
 
-use super::cpu::{STACK_OFFSET, Interrupt};
+use super::cpu::{Interrupt, STACK_OFFSET};
 use super::decode::instr_lookup::num_cycles_for_instr;
 use super::utils::is_negative;
 use super::{
@@ -18,7 +15,7 @@ use super::{
     reg::StatusFlags,
 };
 use crate::cpu::cpu::Cpu;
-use crate::mem::utils::{make_address, page_num, hi_byte, lo_byte};
+use crate::mem::utils::{hi_byte, lo_byte, make_address, page_num};
 
 use super::deref::{deref_address, deref_byte};
 
@@ -186,7 +183,7 @@ fn branch_on_predicate(am: AddressingMode, cpu: &mut Cpu, take_branch: bool) -> 
     } else {
         // branch not taken
         Ok(0)
-    } 
+    }
 }
 
 fn compare(am: AddressingMode, cpu: &mut Cpu, val: u8) -> Result<u8> {
@@ -197,7 +194,11 @@ fn compare(am: AddressingMode, cpu: &mut Cpu, val: u8) -> Result<u8> {
     cpu.reg.status.set(StatusFlags::NEGATIVE, diff & 0x80 != 0);
     cpu.reg.status.set(StatusFlags::ZERO, m == val);
     cpu.reg.status.set(StatusFlags::CARRY, val >= m);
-    if cross { Ok(1) } else { Ok(0) }
+    if cross {
+        Ok(1)
+    } else {
+        Ok(0)
+    }
 }
 
 fn adc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
@@ -215,7 +216,7 @@ fn adc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     cpu.reg.a = masked;
 
     // https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-    set_negative_flag(cpu, masked); 
+    set_negative_flag(cpu, masked);
     set_zero_flag(cpu, masked);
     let carry = sum & 0xFF00 != 0;
     cpu.reg.status.set(StatusFlags::CARRY, carry);
@@ -279,8 +280,12 @@ fn beq(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
 
 fn bit(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     let m = deref_byte(am, cpu)?;
-    cpu.reg.status.set(StatusFlags::NEGATIVE, m & 0b10000000 != 0);
-    cpu.reg.status.set(StatusFlags::OVERFLOW, m & 0b01000000 != 0);
+    cpu.reg
+        .status
+        .set(StatusFlags::NEGATIVE, m & 0b10000000 != 0);
+    cpu.reg
+        .status
+        .set(StatusFlags::OVERFLOW, m & 0b01000000 != 0);
     set_zero_flag(cpu, cpu.reg.a & m);
     Ok(0)
 }
@@ -383,7 +388,11 @@ fn eor(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
 
     set_negative_flag(cpu, cpu.reg.a);
     set_zero_flag(cpu, cpu.reg.a);
-    if cross {Ok(1)} else {Ok(0)}
+    if cross {
+        Ok(1)
+    } else {
+        Ok(0)
+    }
 }
 
 fn inc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
@@ -480,9 +489,8 @@ fn lsr(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
         cpu.reg.status.set(StatusFlags::CARRY, carry);
         set_zero_flag(cpu, val >> 1);
         cpu.reg.status.remove(StatusFlags::NEGATIVE);
-    } 
+    }
     Ok(0)
-
 }
 
 fn nop(_: AddressingMode, _: &mut Cpu) -> Result<u8> {
@@ -496,7 +504,11 @@ fn ora(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
 
     set_negative_flag(cpu, cpu.reg.a);
     set_zero_flag(cpu, cpu.reg.a);
-    if cross {Ok(1)} else {Ok(0)}
+    if cross {
+        Ok(1)
+    } else {
+        Ok(0)
+    }
 }
 
 fn pha(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
@@ -521,10 +533,10 @@ fn pla(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
 
 fn plp(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     // Invalid flags should never happen, we use all 8 bits
-    cpu.reg.status = StatusFlags::from_bits(pop_stack(cpu)?).expect("Flags popped from stack invalid.");
+    cpu.reg.status =
+        StatusFlags::from_bits(pop_stack(cpu)?).expect("Flags popped from stack invalid.");
     Ok(0)
 }
-
 
 #[cfg(test)]
 mod exec_tests {

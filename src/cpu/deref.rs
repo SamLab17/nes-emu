@@ -1,8 +1,8 @@
-use crate::error::Result;
 use super::isa::AddressingMode;
-use crate::cpu::cpu::Cpu;
-use crate::mem::utils::make_address;
 use super::utils::is_negative;
+use crate::cpu::cpu::Cpu;
+use crate::error::Result;
+use crate::mem::utils::make_address;
 
 pub fn effective_addr(am: AddressingMode, cpu: &Cpu) -> Result<u16> {
     use AddressingMode::*;
@@ -14,16 +14,18 @@ pub fn effective_addr(am: AddressingMode, cpu: &Cpu) -> Result<u16> {
             let lo = cpu.bus.read(((offset + cpu.reg.x) & 0xFF) as u16)?;
             let hi = cpu.bus.read(((offset + cpu.reg.x + 1) & 0xFF) as u16)?;
             Ok(make_address(lo, hi))
-        },
+        }
         IndirectY(offset) => {
             let lo = cpu.bus.read(offset as u16)?;
             let hi = cpu.bus.read((offset + 1) as u16)?;
             Ok(make_address(lo, hi) + (cpu.reg.y as u16))
-        },
+        }
         ZeroPage(offset) => Ok(offset as u16),
         ZeroPageX(offset) => Ok(((offset as u16) + (cpu.reg.x as u16)) & 0xFF),
         ZeroPageY(offset) => Ok(((offset as u16) + (cpu.reg.y as u16)) & 0xFF),
-        Immediate(_) | Relative(_) | Accumulator | Implied | Indirect(_) => panic!("{:?} has no effective address.", am)
+        Immediate(_) | Relative(_) | Accumulator | Implied | Indirect(_) => {
+            panic!("{:?} has no effective address.", am)
+        }
     }
 }
 
@@ -32,11 +34,12 @@ pub fn deref_byte(am: AddressingMode, cpu: &Cpu) -> Result<u8> {
     match am {
         Accumulator => Ok(cpu.reg.a),
         Immediate(val) => Ok(val),
-        Implied | Indirect(_) | Relative(_) => panic!("{:?} cannot be derefenced into a byte value.", am),
+        Implied | Indirect(_) | Relative(_) => {
+            panic!("{:?} cannot be derefenced into a byte value.", am)
+        }
         _ => cpu.bus.read(effective_addr(am, cpu)?),
     }
 }
-
 
 pub fn deref_address(am: AddressingMode, cpu: &Cpu) -> Result<u16> {
     use AddressingMode::*;
@@ -53,15 +56,15 @@ pub fn deref_address(am: AddressingMode, cpu: &Cpu) -> Result<u16> {
             } else {
                 Ok(cpu.reg.pc + (offset as u16))
             }
-        },
-        _ => panic!("deref_address on {:?}", am)
+        }
+        _ => panic!("deref_address on {:?}", am),
     }
 }
 
 #[cfg(test)]
 mod addressing_mode_tests {
-    use crate::cpu::cpu::Cpu;
     use super::AddressingMode::*;
+    use crate::cpu::cpu::Cpu;
 
     use super::deref_address;
     use super::deref_byte;
@@ -167,7 +170,6 @@ mod addressing_mode_tests {
         assert_eq!(deref_byte(ZeroPageX(0x1F), &cpu).unwrap(), 0x42);
     }
 
-
     #[test]
     fn zero_page_y() {
         let mut cpu = Cpu::mock(&[0; 0x1FFF]);
@@ -186,7 +188,7 @@ mod addressing_mode_tests {
     #[test]
     fn relative() {
         let mut cpu = Cpu::mock(&[]);
-        
+
         cpu.reg.pc = 0x100;
         // Positive offsets
         assert_eq!(deref_address(Relative(0x8), &cpu).unwrap(), 0x108);
@@ -223,5 +225,4 @@ mod addressing_mode_tests {
         cpu.bus.write(0x100, 0x17).unwrap();
         assert_eq!(deref_address(Indirect(0xFF), &cpu).unwrap(), 0x1776);
     }
-
 }

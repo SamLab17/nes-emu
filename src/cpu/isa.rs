@@ -14,7 +14,7 @@ pub enum AddressingMode {
     Relative(u8),
     ZeroPage(u8),
     ZeroPageX(u8),
-    ZeroPageY(u8)
+    ZeroPageY(u8),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, EnumIter)]
