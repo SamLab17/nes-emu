@@ -1,8 +1,6 @@
 use bitflags::bitflags;
 use std::fmt;
 
-use super::cpu;
-
 bitflags! {
     pub struct StatusFlags: u8 {
         const CARRY = 0b00000001;

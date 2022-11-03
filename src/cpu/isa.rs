@@ -1,8 +1,5 @@
 use strum_macros::EnumIter;
 
-use crate::{cpu::{reg::Registers, cpu::Cpu}, mem::device::{MemoryDevice, MemoryError}};
-use std::fmt;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AddressingMode {
     Accumulator,
