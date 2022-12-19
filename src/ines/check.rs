@@ -1,21 +1,15 @@
 use nes_emu::ines::parse::INesFile;
 use std::path::Path;
+use std::process::exit;
 use std::{fs, env};
 use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let path = &env::args().collect::<Vec<String>>()[1];
+    let path = &env::args().nth(1).expect("No path provided.");
     let bytes = fs::read(Path::new(&path))?;
     println!("Reading {path}");
-    let res = INesFile::parse_from(&bytes);
-    match res {
-        Ok((_, file)) => {
-            println!("Valid INES File!");
-            println!("Header: {:?}", file.header);
-        },
-        Err(e) => {
-            println!("Invalid INES 2 File: {:?}", e);
-        }
-    }
-    Ok(())
+    let file = INesFile::try_from(&bytes)?;
+    println!("Valid INES File!");
+    println!("Header: {:?}", file.header);
+    exit(0);
 }
