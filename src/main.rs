@@ -1,6 +1,7 @@
 mod mem;
 mod error;
 mod cpu;
+mod ines;
 
 use error::Result;
 
