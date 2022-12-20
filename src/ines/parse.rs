@@ -12,6 +12,12 @@ pub struct INesHeader {
     pub prg_rom_size : u32,
     pub chr_rom_size : u32,
 
+    pub prg_ram_size : u32,
+    pub prg_nvram_size : u32,
+
+    pub chr_ram_size : u32,
+    pub chr_nvram_size : u32,
+
     // Flags 6
     pub mirror_type: bool,
     pub battery : bool,
@@ -41,8 +47,9 @@ impl INesFile {
     const INES2_ID: u8 = 0b10;
     const PRG_ROM_FACTOR: u32 = 16 * 1024;
     const CHR_ROM_FACTOR: u32 = 8 * 1024;
+    const RAM_SIZE_SHIFT: u32 = 64;
 
-    fn actual_size(lsb: u8, msb: u8, factor: u32) -> u32 {
+    fn actual_rom_size(lsb: u8, msb: u8, factor: u32) -> u32 {
         let size = (lsb as u32) | ((msb as u32) << 8);
         if size <= 0xEFF {
             size * factor
@@ -50,6 +57,14 @@ impl INesFile {
             let e = size.bit_range(2..8) as u32;
             let m = (size & 0b11) as u32;
             (1 << e) * (m*2 + 1)
+        }
+    }
+
+    fn actual_ram_size(shift: u8) -> u32 {
+        if shift == 0 {
+            0
+        } else {
+            Self::RAM_SIZE_SHIFT << shift
         }
     }
 
@@ -62,8 +77,8 @@ impl INesFile {
               flags7, 
               flags8, 
               flags9,
-              _flags10,
-              _flags11,
+              flags10,
+              flags11,
               flags12,
               _flags13,
               _misc_roms,
@@ -98,8 +113,12 @@ impl INesFile {
 
         Ok((bytes, 
             INesHeader { 
-                prg_rom_size: Self::actual_size(prg_rom_size_lsb, prg_rom_size_msb, Self::PRG_ROM_FACTOR), 
-                chr_rom_size: Self::actual_size(chr_rom_size_lsb, chr_rom_size_msb, Self::CHR_ROM_FACTOR),
+                prg_rom_size: Self::actual_rom_size(prg_rom_size_lsb, prg_rom_size_msb, Self::PRG_ROM_FACTOR), 
+                chr_rom_size: Self::actual_rom_size(chr_rom_size_lsb, chr_rom_size_msb, Self::CHR_ROM_FACTOR),
+                prg_ram_size : Self::actual_ram_size(flags10.bit_range(0..4)),
+                prg_nvram_size : Self::actual_ram_size(flags10.bit_range(4..8)),
+                chr_ram_size : Self::actual_ram_size(flags11.bit_range(0..4)),
+                chr_nvram_size : Self::actual_ram_size(flags11.bit_range(4..8)),
                 mirror_type : flags6.bit(0) as bool,
                 battery : flags6.bit(1) as bool,
                 trainer : flags6.bit(2) as bool,
