@@ -61,12 +61,12 @@ pub fn build_nrom_cart(prg_rom: &[u8], chr_rom: &[u8]) -> Result<Cartridge> {
     if prg_rom.len() == 16*1024 {
         Ok(Box::new(Nrom128 {
             prg_rom: prg_rom.try_into().unwrap(),
-            chr_rom: chr_rom.try_into().unwrap()
+            chr_rom: chr_rom.try_into().expect("Invalid CHR ROM size for NROM-128.")
         }))
     } else if prg_rom.len() == 32*1024{
         Ok(Box::new(Nrom256 {
             prg_rom: prg_rom.try_into().unwrap(),
-            chr_rom: chr_rom.try_into().unwrap()
+            chr_rom: chr_rom.try_into().expect("Invalid CHR ROM size for NROM-256.")
         })) 
     } else {
         Err("Unsupported PRG ROM size for NROM mapper".into())

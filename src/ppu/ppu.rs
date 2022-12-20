@@ -19,7 +19,7 @@ impl MemoryDevice for Ppu {
     fn name(&self) -> String { "PPU".into() }
 
     fn read(&self, addr: u16) -> Result<u8> {
-        if addr < 0x2000 || addr > 0x3FFF {
+        if addr < 0x2000 || (addr > 0x3FFF && addr != 0x4014) {
             Err(Box::new(MemoryError::InvalidAddress(addr)))
         } else {
             todo!("PPU read registers")

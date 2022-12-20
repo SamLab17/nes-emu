@@ -35,18 +35,17 @@ pub struct Cpu {
 impl Cpu {
     pub fn new(cart: Cartridge) -> Self {
         Self {
-            reg: Default::default(),
-            // TODO: "Insert" cartridge here: .with_cart()
+            reg: Registers { pc: 0x34, sp: 0xFD, ..Registers::default()},
             bus: MemoryBusBuilder::new().with_cart(cart).build(),
             interrupt: None,
         }
     }
 
-    // Cpu with only RAM for unit tests
-    pub fn mock(mem: &[u8]) -> Self {
+    // CPU with only RAM for unit tests
+    pub fn mock(init_ram: Option<&[u8]>) -> Self {
         Cpu {
             reg: Default::default(),
-            bus: MemoryBusBuilder::new().with_ram(mem).build(),
+            bus: MemoryBusBuilder::new().with_ram(init_ram).build(),
             interrupt: None,
         }
     }

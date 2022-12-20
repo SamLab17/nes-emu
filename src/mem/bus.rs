@@ -31,8 +31,8 @@ impl MemoryBusBuilder {
         }
     }
 
-    pub fn with_ram(mut self, mem: &[u8]) -> Self {
-        self.ram = Some(Ram::from(mem));
+    pub fn with_ram(mut self, init_ram: Option<&[u8]>) -> Self {
+        self.ram = Some(init_ram.map(Ram::from).unwrap_or_else(|| Ram::default()));
         self
     }
 
@@ -58,6 +58,7 @@ impl MemoryDevice for MemoryBus {
         match addr {
             0x0000..=0x1FFF => self.ram.read(addr),
             0x2000..=0x3FFF => self.ppu.read(addr),
+            0x4014 => self.ppu.read(addr),
             0x4020..=0xFFFF => self.cart.read(addr),
             _ => Err(Box::new(MemoryError::InvalidAddress(addr)))
         }
@@ -67,6 +68,7 @@ impl MemoryDevice for MemoryBus {
         match addr {
             0x0000..=0x1FFF => self.ram.write(addr, byte),
             0x2000..=0x3FFF => self.ppu.write(addr, byte),
+            0x4014 => self.ppu.write(addr, byte),
             0x4020..=0xFFFF => self.cart.write(addr, byte),
             _ => Err(Box::new(MemoryError::InvalidAddress(addr)))
         }

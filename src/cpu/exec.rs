@@ -754,7 +754,7 @@ mod exec_tests {
 
     #[test]
     fn cross_page_boundary_test() {
-        let mut cpu = Cpu::mock(&[0; 0x1FFF]);
+        let mut cpu = Cpu::mock(None);
         cpu.reg.x = 0xFF;
         cpu.reg.y = 0xFF;
         assert!(cross_page_boundary(AbsoluteX(0x17), &cpu));

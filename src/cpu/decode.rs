@@ -173,7 +173,7 @@ mod decode_tests {
     // Checks proper decode of instruction (get correct instruction, read correct # of bytes) and
     // and checks the # of cycles for the instruction
     fn check_decode(binary: &[u8], op: Opcode, am: AddressingMode, n_cycles: u8) {
-        let mut cpu = Cpu::mock(binary);
+        let mut cpu = Cpu::mock(Some(binary));
         cpu.reg.pc = 0;
         let instr = Instr { op: op, mode: am };
 

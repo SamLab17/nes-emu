@@ -76,21 +76,21 @@ mod addressing_mode_tests {
 
     #[test]
     fn accumulator() {
-        let mut cpu = Cpu::mock(&[]);
+        let mut cpu = Cpu::mock(None);
         cpu.reg.a = 42;
         assert_eq!(deref_byte(Accumulator, &cpu).unwrap(), 42);
     }
 
     #[test]
     fn absolute_byte() {
-        let cpu = Cpu::mock(&[0xFE, 0xCA, 0xEF, 0xBE]);
+        let cpu = Cpu::mock(Some(&[0xFE, 0xCA, 0xEF, 0xBE]));
         assert_eq!(deref_byte(Absolute(0x0000), &cpu).unwrap(), 0xFE);
         assert_eq!(deref_byte(Absolute(0x0002), &cpu).unwrap(), 0xEF);
     }
 
     #[test]
     fn absolute_x_index() {
-        let mut cpu = Cpu::mock(&[0; 0x1FFF]);
+        let mut cpu = Cpu::mock(None);
         // no carry
         cpu.bus.write(0x08F7, 0x42).unwrap();
         cpu.reg.x = 0x7;
@@ -104,7 +104,7 @@ mod addressing_mode_tests {
 
     #[test]
     fn absolute_y_index() {
-        let mut cpu = Cpu::mock(&[0; 0x1FFF]);
+        let mut cpu = Cpu::mock(None);
         // no carry
         cpu.bus.write(0x08F7, 0x42).unwrap();
         cpu.reg.y = 0x7;
@@ -118,7 +118,7 @@ mod addressing_mode_tests {
 
     #[test]
     fn immediate() {
-        let cpu = Cpu::mock(&[]);
+        let cpu = Cpu::mock(None);
         assert_eq!(deref_byte(Immediate(0x25), &cpu).unwrap(), 0x25);
         assert_eq!(deref_byte(Immediate(0xFF), &cpu).unwrap(), 0xFF);
         assert_eq!(deref_byte(Immediate(0x00), &cpu).unwrap(), 0x00);
@@ -126,27 +126,27 @@ mod addressing_mode_tests {
 
     #[test]
     fn x_indirect() {
-        let mut cpu = Cpu::mock(&[0; 0x1FFF]);
+        let mut cpu = Cpu::mock(None);
         cpu.reg.x = 0x04;
         cpu.bus.write(0x0024, 0x74).unwrap();
-        cpu.bus.write(0x0025, 0x10).unwrap();
-        cpu.bus.write(0x1074, 0x42).unwrap();
+        cpu.bus.write(0x0025, 0x01).unwrap();
+        cpu.bus.write(0x0174, 0x42).unwrap();
         assert_eq!(deref_byte(XIndirect(0x20), &cpu).unwrap(), 0x42);
     }
 
     #[test]
     fn indirect_y() {
-        let mut cpu = Cpu::mock(&[0; 0x1FFF]);
+        let mut cpu = Cpu::mock(None);
         cpu.reg.y = 0x10;
         cpu.bus.write(0x74, 0x28).unwrap();
-        cpu.bus.write(0x75, 0x10).unwrap();
-        cpu.bus.write(0x1038, 0x42).unwrap();
+        cpu.bus.write(0x75, 0x01).unwrap();
+        cpu.bus.write(0x0138, 0x42).unwrap();
         assert_eq!(deref_byte(IndirectY(0x74), &cpu).unwrap(), 0x42);
     }
 
     #[test]
     fn zero_page() {
-        let mut cpu = Cpu::mock(&[0; 0x1FFF]);
+        let mut cpu = Cpu::mock(None);
         cpu.bus.write(0x00, 0xAB).unwrap();
         cpu.bus.write(0x22, 0xCD).unwrap();
         cpu.bus.write(0x33, 0xEF).unwrap();
@@ -159,7 +159,7 @@ mod addressing_mode_tests {
 
     #[test]
     fn zero_page_x() {
-        let mut cpu = Cpu::mock(&[0; 0x1FFF]);
+        let mut cpu = Cpu::mock(None);
         cpu.bus.write(0x20, 0x42).unwrap();
         cpu.reg.x = 0x60;
 
@@ -174,7 +174,7 @@ mod addressing_mode_tests {
 
     #[test]
     fn zero_page_y() {
-        let mut cpu = Cpu::mock(&[0; 0x1FFF]);
+        let mut cpu = Cpu::mock(None);
         cpu.bus.write(0x20, 0x42).unwrap();
         cpu.reg.y = 0x60;
 
@@ -189,7 +189,7 @@ mod addressing_mode_tests {
 
     #[test]
     fn relative() {
-        let mut cpu = Cpu::mock(&[]);
+        let mut cpu = Cpu::mock(None);
 
         cpu.reg.pc = 0x100;
         // Positive offsets
@@ -200,28 +200,29 @@ mod addressing_mode_tests {
         assert_eq!(deref_address(Relative(0xFF), &cpu).unwrap(), 0x0FF);
         assert_eq!(deref_address(Relative(0x9C), &cpu).unwrap(), 0x9C);
 
-        cpu.reg.pc = 0x1234;
-        // 0x1234 - 0x4 = 0x1230
-        assert_eq!(deref_address(Relative(0xFC), &cpu).unwrap(), 0x1230);
-        // 0x1234 - 0x28 = 0x120C
-        assert_eq!(deref_address(Relative(0xD8), &cpu).unwrap(), 0x120C);
-        // 0x1234 - 0x80 = 0x11B4
-        assert_eq!(deref_address(Relative(0x80), &cpu).unwrap(), 0x11B4);
+        cpu.reg.pc = 0x0123;
+        // 0x0123 - 0x3 = 0x1230
+        assert_eq!(deref_address(Relative(0xFD), &cpu).unwrap(), 0x120);
+        // 0x0123 - 0x28 = 0xFB
+        assert_eq!(deref_address(Relative(0xD8), &cpu).unwrap(), 0xFB);
+        // 0x0123 - 0x80 = 0xA3
+        assert_eq!(deref_address(Relative(0x80), &cpu).unwrap(), 0xA3);
     }
 
     #[test]
     fn absolute_addr() {
-        let cpu = Cpu::mock(&[]);
+        let cpu = Cpu::mock(None);
         assert_eq!(deref_address(Absolute(0xCAFE), &cpu).unwrap(), 0xCAFE);
         assert_eq!(deref_address(Absolute(0xBEA7), &cpu).unwrap(), 0xBEA7);
+        assert_eq!(deref_address(Absolute(0x0101), &cpu).unwrap(), 0x0101);
     }
 
     #[test]
     fn indirect() {
-        let mut cpu = Cpu::mock(&[0; 0x1FFF]);
-        cpu.bus.write(0x1000, 0x52).unwrap();
-        cpu.bus.write(0x1001, 0x3a).unwrap();
-        assert_eq!(deref_address(Indirect(0x1000), &cpu).unwrap(), 0x3a52);
+        let mut cpu = Cpu::mock(None);
+        cpu.bus.write(0x100, 0x52).unwrap();
+        cpu.bus.write(0x101, 0x3a).unwrap();
+        assert_eq!(deref_address(Indirect(0x100), &cpu).unwrap(), 0x3a52);
 
         cpu.bus.write(0xFF, 0x76).unwrap();
         cpu.bus.write(0x100, 0x17).unwrap();
