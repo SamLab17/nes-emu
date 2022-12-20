@@ -1,46 +1,74 @@
+use std::ops::Range;
+use std::vec;
+
+use nom::Map;
+
+use crate::ppu::ppu::Ppu;
 use crate::error::Result;
 use crate::mem::device::{MemoryDevice, MemoryError};
-use crate::mem::ram::Ram;
 
-struct Mapping {
-    start_addr: u16,
-    end_addr: u16,
-    dev: Box<dyn MemoryDevice>,
-}
+use crate::cart::{cart::Cartridge, mock::MockCartridge}; 
+use super::ram::Ram;
 
 pub struct MemoryBus {
-    devices: Vec<Mapping>,
+    ram: Ram,
+    pub ppu: Ppu,
+    pub cart: Cartridge
 }
 
-impl MemoryBus {
+pub struct MemoryBusBuilder {
+    ram: Option<Ram>,
+    ppu: Ppu,
+    cart: Option<Box<dyn MemoryDevice>>
+}
+
+impl MemoryBusBuilder {
     pub fn new() -> Self {
-        let r: Ram = Default::default();
-        MemoryBus {
-            devices: vec![Mapping {
-                start_addr: 0x0000,
-                end_addr: 0x1FFF,
-                dev: Box::new(r),
-            }],
+        Self {
+            ram: None,
+            ppu: Ppu::default(),
+            cart: None
+        }
+    }
+
+    pub fn with_ram(mut self, mem: &[u8]) -> Self {
+        self.ram = Some(Ram::from(mem));
+        self
+    }
+
+    pub fn with_cart(mut self, cart: Box<dyn MemoryDevice>) -> Self {
+        self.cart = Some(cart);
+        self
+    }
+
+    pub fn build(self) -> MemoryBus {
+        MemoryBus { 
+            ram: self.ram.unwrap_or_else(|| Ram::default()),
+            ppu: self.ppu,
+            cart: self.cart.unwrap_or_else(|| Box::new(MockCartridge{}))
         }
     }
 }
 
 impl MemoryDevice for MemoryBus {
+
+    fn name(&self) -> String { "Memory Bus".into() }
+
     fn read(&self, addr: u16) -> Result<u8> {
-        for dev in self.devices.iter() {
-            if addr >= dev.start_addr && addr < dev.end_addr {
-                return dev.dev.read(addr);
-            }
+        match addr {
+            0x0000..=0x1FFF => self.ram.read(addr),
+            0x2000..=0x3FFF => self.ppu.read(addr),
+            0x4020..=0xFFFF => self.cart.read(addr),
+            _ => Err(Box::new(MemoryError::InvalidAddress(addr)))
         }
-        Err(Box::new(MemoryError::InvalidAddress(addr)))
     }
 
     fn write(&mut self, addr: u16, byte: u8) -> Result<()> {
-        for dev in self.devices.iter_mut() {
-            if addr >= dev.start_addr && addr < dev.end_addr {
-                return dev.dev.write(addr, byte);
-            }
+        match addr {
+            0x0000..=0x1FFF => self.ram.write(addr, byte),
+            0x2000..=0x3FFF => self.ppu.write(addr, byte),
+            0x4020..=0xFFFF => self.cart.write(addr, byte),
+            _ => Err(Box::new(MemoryError::InvalidAddress(addr)))
         }
-        Err(Box::new(MemoryError::InvalidAddress(addr)))
     }
 }

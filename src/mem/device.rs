@@ -1,5 +1,6 @@
 use crate::error::Result;
 use std::{error::Error, fmt};
+use std::fmt::Debug;
 
 #[derive(Debug, Clone, Copy)]
 pub enum MemoryError {
@@ -23,6 +24,7 @@ impl fmt::Display for MemoryError {
 }
 
 pub trait MemoryDevice {
+    fn name(&self) -> String;
     fn read(&self, addr: u16) -> Result<u8>;
     fn write(&mut self, addr: u16, byte: u8) -> Result<()>;
 
@@ -33,5 +35,11 @@ pub trait MemoryDevice {
             addr += 1
         }
         Ok(())
+    }
+}
+
+impl Debug for dyn MemoryDevice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name())
     }
 }

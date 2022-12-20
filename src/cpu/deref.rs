@@ -3,6 +3,7 @@ use super::utils::is_negative;
 use crate::cpu::cpu::Cpu;
 use crate::error::Result;
 use crate::mem::utils::make_address;
+use crate::mem::device::MemoryDevice;
 
 pub fn effective_addr(am: AddressingMode, cpu: &Cpu) -> Result<u16> {
     use AddressingMode::*;
@@ -65,6 +66,7 @@ pub fn deref_address(am: AddressingMode, cpu: &Cpu) -> Result<u16> {
 mod addressing_mode_tests {
     use super::AddressingMode::*;
     use crate::cpu::cpu::Cpu;
+    use crate::mem::device::MemoryDevice;
 
     use super::deref_address;
     use super::deref_byte;

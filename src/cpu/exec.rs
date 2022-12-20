@@ -16,6 +16,7 @@ use super::{
 };
 use crate::cpu::cpu::Cpu;
 use crate::mem::utils::{hi_byte, lo_byte, make_address, page_num};
+use crate::mem::device::MemoryDevice;
 
 use super::deref::{deref_address, deref_byte};
 
@@ -747,6 +748,7 @@ fn tya(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
 mod exec_tests {
     use super::AddressingMode::*;
     use crate::cpu::cpu::Cpu;
+    use crate::mem::device::MemoryDevice;
 
     use super::cross_page_boundary;
 

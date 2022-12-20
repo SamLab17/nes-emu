@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::{cpu::isa::AddressingMode, mem::utils::make_address};
+use crate::{cpu::isa::AddressingMode, mem::utils::make_address, mem::device::MemoryDevice};
 use std::{error::Error, fmt};
 
 #[derive(Debug, Clone)]

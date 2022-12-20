@@ -14,6 +14,9 @@ impl Default for Ram {
 }
 
 impl MemoryDevice for Ram {
+
+    fn name(&self) -> String { "RAM".into() }
+
     fn read(&self, addr: u16) -> Result<u8> {
         // FIXME: This is wrong!
         Ok(self.mem[addr as usize])

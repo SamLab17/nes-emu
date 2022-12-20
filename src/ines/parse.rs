@@ -8,6 +8,14 @@ use nom::{
 };
 
 use bit::BitIndex;
+use derive_try_from_primitive::TryFromPrimitive;
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, TryFromPrimitive)]
+pub enum MirrorType {
+    Horizontal = 0,
+    Vertical = 1,
+}
 
 #[derive(Debug)]
 pub struct INesHeader {
@@ -21,8 +29,8 @@ pub struct INesHeader {
     pub chr_nvram_size : u32,
 
     // Flags 6
-    pub mirror_type: bool,
-    pub battery: bool,
+    pub mirror_type: MirrorType,
+    pub battery_present: bool,
     pub trainer: bool,
     pub four_screen: bool,
 
@@ -121,10 +129,10 @@ impl INesFile {
                 prg_nvram_size : Self::actual_ram_size(flags10.bit_range(4..8)),
                 chr_ram_size : Self::actual_ram_size(flags11.bit_range(0..4)),
                 chr_nvram_size : Self::actual_ram_size(flags11.bit_range(4..8)),
-                mirror_type : flags6.bit(0) as bool,
-                battery : flags6.bit(1) as bool,
-                trainer : flags6.bit(2) as bool,
-                four_screen : flags6.bit(3) as bool,
+                mirror_type : MirrorType::try_from(flags6 & 0b1).unwrap(),
+                battery_present : flags6.bit(1),
+                trainer : flags6.bit(2),
+                four_screen : flags6.bit(3),
                 is_ines2 : ines2,
                 console_type : flags7.bit_range(0..2),
                 mapper : mapper,
