@@ -2,10 +2,12 @@ use super::decode::decode_instr;
 use super::exec::exec_instr;
 use super::reg::{Registers, StatusFlags};
 use crate::cart::cart::Cartridge;
+use crate::cart::mock::mock_cart;
 use crate::error::Result;
 use crate::mem::bus::MemoryBusBuilder;
 use crate::mem::utils::make_address;
 use crate::mem::{bus::MemoryBus, device::MemoryDevice};
+use crate::ppu::ppu::Ppu;
 
 pub const STACK_OFFSET: u16 = 0x1000;
 
@@ -35,7 +37,11 @@ pub struct Cpu {
 impl Cpu {
     pub fn new(cart: Cartridge) -> Self {
         Self {
-            reg: Registers { pc: 0x34, sp: 0xFD, ..Registers::default()},
+            reg: Registers {
+                pc: 0x34,
+                sp: 0xFD,
+                ..Registers::default()
+            },
             bus: MemoryBusBuilder::new().with_cart(cart).build(),
             interrupt: None,
         }
@@ -67,3 +73,44 @@ impl Cpu {
         exec_instr(decode_instr(self)?, self)
     }
 }
+
+/*
+pub struct CpuBuilder {
+    cart: Cartridge,
+    ppu: Option<Ppu>,
+}
+
+impl CpuBuilder {
+    pub fn new() -> Self {
+        CpuBuilder {
+            cart: mock_cart(),
+            ppu: None,
+        }
+    }
+
+    pub fn with_cart(mut self, cart: Cartridge) -> Self {
+        self.cart = cart;
+        self
+    }
+
+    pub fn with_ppu(mut self, ppu: Ppu) -> Self {
+        self.ppu = Some(ppu);
+        self
+    }
+
+    pub fn build(self) -> Cpu {
+        Cpu {
+            reg: Registers {
+                pc: 0x34,
+                sp: 0xFD,
+                ..Registers::default()
+            },
+            bus: MemoryBusBuilder::new()
+                .with_cart(self.cart)
+                .with_ppu(self.ppu.unwrap_or_default())
+                .build(),
+            interrupt: None,
+        }
+    }
+}
+*/

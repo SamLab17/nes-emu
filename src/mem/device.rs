@@ -5,13 +5,27 @@ use std::fmt::Debug;
 #[derive(Debug, Clone, Copy)]
 pub enum MemoryError {
     ReadOnly(u16),
+    WriteOnly(u16),
     InvalidAddress(u16),
+}
+
+pub fn inv_addr(addr: u16) -> Box<MemoryError> {
+    Box::new(MemoryError::InvalidAddress(addr))
+}
+
+pub fn rd_only(addr: u16) -> Box<MemoryError> {
+    Box::new(MemoryError::ReadOnly(addr))
+}
+
+pub fn wr_only(addr: u16) -> Box<MemoryError> {
+    Box::new(MemoryError::WriteOnly(addr))
 }
 
 impl Error for MemoryError {
     fn description(&self) -> &str {
         match self {
             MemoryError::ReadOnly(_) => "Address is read-only",
+            MemoryError::WriteOnly(_) => "Addres is write-only",
             MemoryError::InvalidAddress(_) => "Address is invalid",
         }
     }
@@ -25,7 +39,10 @@ impl fmt::Display for MemoryError {
 
 pub trait MemoryDevice {
     fn name(&self) -> String;
-    fn read(&self, addr: u16) -> Result<u8>;
+
+    // A shame that this "self" ref has to be mut, but the PPU can change its state
+    // based on reads
+    fn read(&mut self, addr: u16) -> Result<u8>;
     fn write(&mut self, addr: u16, byte: u8) -> Result<()>;
 
     fn write_many(&mut self, start_addr: u16, bytes: &[u8]) -> Result<()> {

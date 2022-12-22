@@ -17,7 +17,7 @@ impl MemoryDevice for Ram {
 
     fn name(&self) -> String { "RAM".into() }
 
-    fn read(&self, addr: u16) -> Result<u8> {
+    fn read(&mut self, addr: u16) -> Result<u8> {
         if addr > 0x1FFF {
             Err(Box::new(MemoryError::InvalidAddress(addr)))
         } else {

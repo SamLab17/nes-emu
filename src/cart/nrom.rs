@@ -1,7 +1,7 @@
-use super::cart::Cartridge;
+use super::cart::{Cart, Cartridge};
 
 use crate::error::Result;
-use crate::mem::device::{MemoryDevice, MemoryError};
+use crate::mem::device::{MemoryDevice, MemoryError, inv_addr, rd_only};
 
 #[derive(Debug)]
 pub struct Nrom128 {
@@ -12,21 +12,28 @@ pub struct Nrom128 {
 impl MemoryDevice for Nrom128 {
     fn name(&self) -> String { "NROM-128".into() }
 
-    fn read(&self, addr: u16) -> crate::error::Result<u8> {
+    fn read(&mut self, addr: u16) -> Result<u8> {
         match addr {
             0x8000..=0xFFFF => Ok(self.prg_rom[(addr & 0x3FFF) as usize]),
-            _ => Err(Box::new(MemoryError::InvalidAddress(addr))),
+            _ => Err(inv_addr(addr)),
         }
     }
 
-    fn write(&mut self, addr: u16, byte: u8) -> crate::error::Result<()> {
+    fn write(&mut self, addr: u16, _byte: u8) -> Result<()> {
         match addr {
-            0x8000..=0xFFFF => {
-                self.prg_rom[(addr & 0x3FFF) as usize] = byte;
-                Ok(())
-            }
-            _ => Err(Box::new(MemoryError::InvalidAddress(addr))),
+            0x8000..=0xFFFF => Err(rd_only(addr)),
+            _ => Err(inv_addr(addr)),
         }
+    }
+}
+
+impl Cart for Nrom128 {
+    fn ppu_read(&self, addr: u16, vram: &[u8]) -> Result<u8> {
+        todo!()
+    }
+
+    fn ppu_write(&mut self, addr: u16, byte: u8, vram: &mut [u8]) -> Result<()> {
+        todo!()
     }
 }
 
@@ -39,22 +46,36 @@ pub struct Nrom256 {
 impl MemoryDevice for Nrom256 {
     fn name(&self) -> String { "NROM-256".into() }
 
-    fn read(&self, addr: u16) -> crate::error::Result<u8> {
+    fn read(&mut self, addr: u16) -> Result<u8> {
         match addr {
             0x8000..=0xFFFF => Ok(self.prg_rom[(addr & 0x7FFF) as usize]),
             _ => Err(Box::new(MemoryError::InvalidAddress(addr))),
         }
     }
 
-    fn write(&mut self, addr: u16, byte: u8) -> crate::error::Result<()> {
+    fn write(&mut self, addr: u16, byte: u8) -> Result<()> {
         match addr {
             0x8000..=0xFFFF => {
                 self.prg_rom[(addr & 0x7FFF) as usize] = byte;
                 Ok(())
             }
-            _ => Err(Box::new(MemoryError::InvalidAddress(addr))),
+            _ => Err(inv_addr(addr)),
         }
     }
+}
+
+impl Cart for Nrom256 {
+    fn ppu_read(&self, addr: u16, vram: &[u8]) -> Result<u8> {
+        match addr {
+            0x0000..=0x1FFF => Ok(self.chr_rom[addr as usize]),
+            0x2000..=0x3EFF => Ok(vram[(addr & 0xFFF) as usize]),
+            _ => Err(inv_addr(addr))
+        }
+    }
+
+    fn ppu_write(&mut self, addr: u16, byte: u8, vram: &mut [u8]) -> Result<()> {
+        todo!()
+    } 
 }
 
 pub fn build_nrom_cart(prg_rom: &[u8], chr_rom: &[u8]) -> Result<Cartridge> {
@@ -91,11 +112,11 @@ mod nrom_tests {
     fn test_128() {
         let mut prg = vec![0u8; 16*1024];
         prg[0x17] = 0x42;
+        prg[0x1018] = 0xff;
         let chr = vec![0u8; 8*1024];
         let mut cart = build_nrom_cart(&prg, &chr).unwrap();
         assert_eq!(cart.read(0x8017).unwrap(), 0x42);
         assert_eq!(cart.read(0xc017).unwrap(), 0x42);
-        cart.write(0x9018, 0xff).unwrap();
         assert_eq!(cart.read(0xd018).unwrap(), 0xff);
     }
 
@@ -103,11 +124,11 @@ mod nrom_tests {
     fn test_256() {
         let mut prg = vec![0u8; 32*1024];
         prg[0x17] = 0x42;
+        prg[0x1018] = 0xff;
         let chr = vec![0u8; 8*1024];
         let mut cart = build_nrom_cart(&prg, &chr).unwrap();
         assert_eq!(cart.read(0x8017).unwrap(), 0x42);
         assert_eq!(cart.read(0xC017).unwrap(), 0x00);
-        cart.write(0x9018, 0xff).unwrap();
         assert_eq!(cart.read(0x9018).unwrap(), 0xff);
         assert_eq!(cart.read(0xD018).unwrap(), 0x00);
     }

@@ -138,7 +138,7 @@ fn invalid_op(am: AddressingMode, _: &mut Cpu) -> Result<u8> {
 
 // Returns whether this addressing mode will cross a page boundary
 // (which typically incurs an extra cycle cost)
-fn cross_page_boundary(am: AddressingMode, cpu: &Cpu) -> bool {
+fn cross_page_boundary(am: AddressingMode, cpu: &mut Cpu) -> bool {
     use AddressingMode::*;
     match am {
         AbsoluteX(addr) => page_num(addr) != page_num(addr + (cpu.reg.x as u16)),
@@ -689,6 +689,7 @@ fn sei(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
 fn sta(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     let addr = effective_addr(am, cpu)?;
     cpu.bus.write(addr, cpu.reg.a)?;
+    // TODO: Check if addr is 0x4014 (DMA)
     Ok(0)
 }
 
@@ -757,49 +758,49 @@ mod exec_tests {
         let mut cpu = Cpu::mock(None);
         cpu.reg.x = 0xFF;
         cpu.reg.y = 0xFF;
-        assert!(cross_page_boundary(AbsoluteX(0x17), &cpu));
-        assert!(cross_page_boundary(AbsoluteX(0x01), &cpu));
-        assert!(cross_page_boundary(AbsoluteX(0xFF), &cpu));
-        assert!(cross_page_boundary(AbsoluteY(0x17), &cpu));
-        assert!(cross_page_boundary(AbsoluteY(0x01), &cpu));
-        assert!(cross_page_boundary(AbsoluteY(0xFF), &cpu));
+        assert!(cross_page_boundary(AbsoluteX(0x17), &mut cpu));
+        assert!(cross_page_boundary(AbsoluteX(0x01), &mut cpu));
+        assert!(cross_page_boundary(AbsoluteX(0xFF), &mut cpu));
+        assert!(cross_page_boundary(AbsoluteY(0x17), &mut cpu));
+        assert!(cross_page_boundary(AbsoluteY(0x01), &mut cpu));
+        assert!(cross_page_boundary(AbsoluteY(0xFF), &mut cpu));
 
         cpu.reg.x = 0x20;
         cpu.reg.y = 0x20;
-        assert!(!cross_page_boundary(AbsoluteX(0x17), &cpu));
-        assert!(cross_page_boundary(AbsoluteX(0xEE), &cpu));
-        assert!(!cross_page_boundary(AbsoluteX(0x00), &cpu));
-        assert!(!cross_page_boundary(AbsoluteY(0x17), &cpu));
-        assert!(cross_page_boundary(AbsoluteY(0xEE), &cpu));
-        assert!(!cross_page_boundary(AbsoluteY(0x00), &cpu));
+        assert!(!cross_page_boundary(AbsoluteX(0x17), &mut cpu));
+        assert!(cross_page_boundary(AbsoluteX(0xEE), &mut cpu));
+        assert!(!cross_page_boundary(AbsoluteX(0x00), &mut cpu));
+        assert!(!cross_page_boundary(AbsoluteY(0x17), &mut cpu));
+        assert!(cross_page_boundary(AbsoluteY(0xEE), &mut cpu));
+        assert!(!cross_page_boundary(AbsoluteY(0x00), &mut cpu));
 
         cpu.reg.y = 0x80;
         cpu.bus.write(0x42, 0xFF).unwrap();
         cpu.bus.write(0x43, 0x00).unwrap();
-        assert!(cross_page_boundary(IndirectY(0x42), &cpu));
+        assert!(cross_page_boundary(IndirectY(0x42), &mut cpu));
 
         cpu.bus.write(0x42, 0x00).unwrap();
         cpu.bus.write(0x43, 0x10).unwrap();
-        assert!(!cross_page_boundary(IndirectY(0x42), &cpu));
+        assert!(!cross_page_boundary(IndirectY(0x42), &mut cpu));
 
         cpu.reg.pc = 0x01FF;
         // -1 jump
-        assert!(!cross_page_boundary(Relative(0xFF), &cpu));
+        assert!(!cross_page_boundary(Relative(0xFF), &mut cpu));
         // -64 jump
-        assert!(!cross_page_boundary(Relative(0xC0), &cpu));
+        assert!(!cross_page_boundary(Relative(0xC0), &mut cpu));
         // + 1 jump
-        assert!(cross_page_boundary(Relative(0x1), &cpu));
+        assert!(cross_page_boundary(Relative(0x1), &mut cpu));
         // + 64 jump
-        assert!(cross_page_boundary(Relative(0x40), &cpu));
+        assert!(cross_page_boundary(Relative(0x40), &mut cpu));
 
         cpu.reg.pc = 0x0100;
         // -1 jump
-        assert!(cross_page_boundary(Relative(0xFF), &cpu));
+        assert!(cross_page_boundary(Relative(0xFF), &mut cpu));
         // -64 jump
-        assert!(cross_page_boundary(Relative(0xC0), &cpu));
+        assert!(cross_page_boundary(Relative(0xC0), &mut cpu));
         // + 1 jump
-        assert!(!cross_page_boundary(Relative(0x1), &cpu));
+        assert!(!cross_page_boundary(Relative(0x1), &mut cpu));
         // + 64 jump
-        assert!(!cross_page_boundary(Relative(0x40), &cpu));
+        assert!(!cross_page_boundary(Relative(0x40), &mut cpu));
     }
 }
