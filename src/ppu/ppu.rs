@@ -16,7 +16,7 @@ use sdl2::pixels::Color;
 
 use super::colors::{load_color_map, ColorMap, load_default_color_map};
 
-pub type Frame = [[Color; 256]; 240];
+pub type Frame = Box<[[Color; 256]; 240]>;
 
 bitfield! {
     #[derive(Debug, Default)]
@@ -105,7 +105,7 @@ impl PpuBuilder {
             w: false,
             cycle: 0,
             scanline: 0,
-            buffer: [[Color::BLACK; 256]; 240]
+            buffer: Box::new([[Color::BLACK; 256]; 240])
         })
     }
 }
@@ -162,12 +162,12 @@ impl Ppu {
             let row = self.scanline as usize;
             let col = self.cycle as usize;
             let mut rng = rand::thread_rng();
-            let color = if rng.gen_bool(0.5) {
-                self.color_map.get(&0x0f)
-            } else {
-                self.color_map.get(&0x30)
-            }.expect("Color missing");
-            // let color = self.color_map.get(&0x0F).unwrap();
+            // let color = if rng.gen_bool(0.5) {
+            //     self.color_map.get(&0x0f)
+            // } else {
+            //     self.color_map.get(&0x30)
+            // }.expect("Color missing");
+            let color = self.color_map.get(&0x0F).unwrap();
             self.buffer[row][col] = *color;
         }
 

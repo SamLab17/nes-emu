@@ -118,18 +118,15 @@ impl Cpu {
     }
 
     pub fn next_frame(&mut self) -> Result<Frame> {
-        let mut num_ticks = 0;
         loop {
-            num_ticks += 1;
             if let Some(frame) = self.system_tick()? {
-                println!("num ticks to render: {num_ticks}");
                 return Ok(frame);
             }
         }
     }
 
     pub fn debug_frame(&self) -> Frame {
-        self.bus.ppu.buffer
+        self.bus.ppu.buffer.clone()
     }
 
 }
