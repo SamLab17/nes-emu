@@ -125,7 +125,7 @@ fn read_little_endian_u16(cpu: &mut Cpu) -> Result<u16> {
     Ok(make_address(lo, hi))
 }
 
-pub fn decode_instr(cpu: &mut Cpu) -> Result<Instr> {
+pub fn fetch_instr(cpu: &mut Cpu) -> Result<Instr> {
     let next_instr = read_next_byte(cpu)?;
     let row = (next_instr & 0xF0) >> 4;
     let col = next_instr & 0xF;
@@ -168,7 +168,7 @@ mod decode_tests {
         isa::{AddressingMode, Instr, Opcode},
     };
 
-    use super::decode_instr;
+    use super::fetch_instr;
 
     // Checks proper decode of instruction (get correct instruction, read correct # of bytes) and
     // and checks the # of cycles for the instruction
@@ -177,7 +177,7 @@ mod decode_tests {
         cpu.reg.pc = 0;
         let instr = Instr { op: op, mode: am };
 
-        assert_eq!(decode_instr(&mut cpu).unwrap(), instr);
+        assert_eq!(fetch_instr(&mut cpu).unwrap(), instr);
         assert_eq!(binary.len(), cpu.reg.pc as usize);
         assert_eq!(num_cycles_for_instr(instr).unwrap(), n_cycles);
     }

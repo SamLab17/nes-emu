@@ -40,7 +40,7 @@ impl fmt::Display for ExecutionError {
 // Function which implements the behavior of an instruction
 // returns the number of _extra_ cycles needed to run the instruction
 // (this extra will be added to number of cycles in instruction matrix)
-type OpcodeFn = fn(AddressingMode, &mut Cpu) -> Result<u8>;
+type OpcodeFn = fn(AddressingMode, &mut Cpu) -> Result<u16>;
 
 lazy_static! {
     static ref OPCODE_FUNCTIONS: HashMap<Opcode, OpcodeFn> = {
@@ -115,7 +115,7 @@ lazy_static! {
     };
 }
 
-pub fn exec_instr(i: Instr, cpu: &mut Cpu) -> Result<u8> {
+pub fn exec_instr(i: Instr, cpu: &mut Cpu) -> Result<u16> {
     // Lookup opcode function
     let instr_fn = OPCODE_FUNCTIONS
         .get(&i.op)
@@ -126,10 +126,10 @@ pub fn exec_instr(i: Instr, cpu: &mut Cpu) -> Result<u8> {
     let extra_cycles = instr_fn(i.mode, cpu)?;
 
     let num_cycles = num_cycles_for_instr(i).ok_or(ExecutionError::InvalidInstruction(i))?;
-    Ok(num_cycles + extra_cycles)
+    Ok(num_cycles as u16 + extra_cycles)
 }
 
-fn invalid_op(am: AddressingMode, _: &mut Cpu) -> Result<u8> {
+fn invalid_op(am: AddressingMode, _: &mut Cpu) -> Result<u16> {
     Err(Box::new(ExecutionError::InvalidInstruction(Instr {
         op: Opcode::INVALID,
         mode: am,
@@ -173,6 +173,7 @@ fn set_zero_flag(cpu: &mut Cpu, val: u8) {
 fn push_stack(cpu: &mut Cpu, byte: u8) -> Result<()> {
     let sp = (cpu.reg.sp as u16) + STACK_OFFSET;
     cpu.bus.write(sp, byte)?;
+    println!("push_stack: sp: {:X}", cpu.reg.sp);
     cpu.reg.sp -= 1;
     Ok(())
 }
@@ -194,7 +195,7 @@ fn pop_stack_addr(cpu: &mut Cpu) -> Result<u16> {
     Ok(make_address(pop_stack(cpu)?, pop_stack(cpu)?))
 }
 
-fn branch_on_predicate(am: AddressingMode, cpu: &mut Cpu, take_branch: bool) -> Result<u8> {
+fn branch_on_predicate(am: AddressingMode, cpu: &mut Cpu, take_branch: bool) -> Result<u16> {
     let cross = cross_page_boundary(am, cpu);
 
     if take_branch {
@@ -211,7 +212,7 @@ fn branch_on_predicate(am: AddressingMode, cpu: &mut Cpu, take_branch: bool) -> 
     }
 }
 
-fn compare(am: AddressingMode, cpu: &mut Cpu, val: u8) -> Result<u8> {
+fn compare(am: AddressingMode, cpu: &mut Cpu, val: u8) -> Result<u16> {
     let cross = cross_page_boundary(am, cpu);
     let m = deref_byte(am, cpu)?;
     let diff = val - m;
@@ -226,7 +227,7 @@ fn compare(am: AddressingMode, cpu: &mut Cpu, val: u8) -> Result<u8> {
     }
 }
 
-fn adc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn adc(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let m = deref_byte(am, cpu)?;
     let crossed = cross_page_boundary(am, cpu);
     let c = if cpu.reg.status.contains(StatusFlags::CARRY) {
@@ -257,7 +258,7 @@ fn adc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     }
 }
 
-fn and(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn and(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let a = cpu.reg.a;
     let m = deref_byte(am, cpu)?;
     let crossed = cross_page_boundary(am, cpu);
@@ -272,7 +273,7 @@ fn and(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     }
 }
 
-fn asl(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn asl(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     if matches!(am, AddressingMode::Accumulator) {
         let carry = is_negative(cpu.reg.a);
         cpu.reg.a <<= 1;
@@ -291,19 +292,19 @@ fn asl(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     Ok(0)
 }
 
-fn bcc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn bcc(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     branch_on_predicate(am, cpu, !cpu.reg.status.contains(StatusFlags::CARRY))
 }
 
-fn bcs(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn bcs(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     branch_on_predicate(am, cpu, cpu.reg.status.contains(StatusFlags::CARRY))
 }
 
-fn beq(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn beq(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     branch_on_predicate(am, cpu, cpu.reg.status.contains(StatusFlags::ZERO))
 }
 
-fn bit(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn bit(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let m = deref_byte(am, cpu)?;
     cpu.reg
         .status
@@ -315,19 +316,19 @@ fn bit(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     Ok(0)
 }
 
-fn bmi(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn bmi(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     branch_on_predicate(am, cpu, cpu.reg.status.contains(StatusFlags::NEGATIVE))
 }
 
-fn bne(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn bne(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     branch_on_predicate(am, cpu, !cpu.reg.status.contains(StatusFlags::ZERO))
 }
 
-fn bpl(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn bpl(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     branch_on_predicate(am, cpu, !cpu.reg.status.contains(StatusFlags::NEGATIVE))
 }
 
-fn brk(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn brk(_am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let mut pc = cpu.reg.pc;
     pc += 2;
     push_stack_addr(cpu, pc)?;
@@ -342,47 +343,47 @@ fn brk(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     Ok(0)
 }
 
-fn bvc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn bvc(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     branch_on_predicate(am, cpu, !cpu.reg.status.contains(StatusFlags::OVERFLOW))
 }
 
-fn bvs(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn bvs(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     branch_on_predicate(am, cpu, cpu.reg.status.contains(StatusFlags::OVERFLOW))
 }
 
-fn clc(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn clc(_am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.status.remove(StatusFlags::CARRY);
     Ok(0)
 }
 
-fn cld(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn cld(_am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.status.remove(StatusFlags::DECIMAL);
     Ok(0)
 }
 
-fn cli(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn cli(_am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.status.remove(StatusFlags::INTERRUPT_DISABLE);
     Ok(0)
 }
 
-fn clv(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn clv(_am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.status.remove(StatusFlags::OVERFLOW);
     Ok(0)
 }
 
-fn cmp(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn cmp(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     compare(am, cpu, cpu.reg.a)
 }
 
-fn cpx(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn cpx(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     compare(am, cpu, cpu.reg.x)
 }
 
-fn cpy(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn cpy(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     compare(am, cpu, cpu.reg.y)
 }
 
-fn dec(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn dec(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let e = effective_addr(am, cpu)?;
     let val = deref_byte(am, cpu)? - 1;
     cpu.bus.write(e, val)?;
@@ -391,21 +392,21 @@ fn dec(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     Ok(0)
 }
 
-fn dex(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn dex(_am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.x -= 1;
     set_negative_flag(cpu, cpu.reg.x);
     set_zero_flag(cpu, cpu.reg.x);
     Ok(0)
 }
 
-fn dey(_am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn dey(_am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.y -= 1;
     set_negative_flag(cpu, cpu.reg.y);
     set_zero_flag(cpu, cpu.reg.y);
     Ok(0)
 }
 
-fn eor(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn eor(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let cross = cross_page_boundary(am, cpu);
     let m = deref_byte(am, cpu)?;
 
@@ -420,7 +421,7 @@ fn eor(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     }
 }
 
-fn inc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn inc(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let addr = effective_addr(am, cpu)?;
     let val = cpu.bus.read(addr)? + 1;
     cpu.bus.write(addr, val)?;
@@ -430,32 +431,32 @@ fn inc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     Ok(0)
 }
 
-fn inx(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn inx(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.x += 1;
     set_negative_flag(cpu, cpu.reg.x);
     set_zero_flag(cpu, cpu.reg.x);
     Ok(0)
 }
 
-fn iny(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn iny(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.y += 1;
     set_negative_flag(cpu, cpu.reg.y);
     set_zero_flag(cpu, cpu.reg.y);
     Ok(0)
 }
 
-fn jmp(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn jmp(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.pc = deref_address(am, cpu)?;
     Ok(0)
 }
 
-fn jsr(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn jsr(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     push_stack_addr(cpu, cpu.reg.pc + 2)?;
     cpu.reg.pc = deref_address(am, cpu)?;
     Ok(0)
 }
 
-fn lda(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn lda(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.a = deref_byte(am, cpu)?;
     // Check if we cross a boundary before updating any state!
     let crossed = cross_page_boundary(am, cpu);
@@ -470,7 +471,7 @@ fn lda(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     }
 }
 
-fn ldx(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn ldx(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.x = deref_byte(am, cpu)?;
     let crossed = cross_page_boundary(am, cpu);
 
@@ -484,7 +485,7 @@ fn ldx(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     }
 }
 
-fn ldy(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn ldy(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.y = deref_byte(am, cpu)?;
     let crossed = cross_page_boundary(am, cpu);
 
@@ -498,7 +499,7 @@ fn ldy(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     }
 }
 
-fn lsr(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn lsr(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     if matches!(am, AddressingMode::Accumulator) {
         let carry = cpu.reg.a & 0b1 == 1;
         cpu.reg.a >>= 1;
@@ -518,11 +519,11 @@ fn lsr(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     Ok(0)
 }
 
-fn nop(_: AddressingMode, _: &mut Cpu) -> Result<u8> {
+fn nop(_: AddressingMode, _: &mut Cpu) -> Result<u16> {
     Ok(0)
 }
 
-fn ora(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn ora(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let cross = cross_page_boundary(am, cpu);
     let m = deref_byte(am, cpu)?;
     cpu.reg.a |= m;
@@ -536,12 +537,12 @@ fn ora(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     }
 }
 
-fn pha(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn pha(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     push_stack(cpu, cpu.reg.a)?;
     Ok(0)
 }
 
-fn php(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn php(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let mut flags = cpu.reg.status.clone();
     flags.insert(StatusFlags::BREAK);
     flags.insert(StatusFlags::UNUSED);
@@ -549,21 +550,21 @@ fn php(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     Ok(0)
 }
 
-fn pla(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn pla(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.a = pop_stack(cpu)?;
     set_zero_flag(cpu, cpu.reg.a);
     set_negative_flag(cpu, cpu.reg.a);
     Ok(0)
 }
 
-fn plp(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn plp(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     // Invalid flags should never happen, we use all 8 bits
     cpu.reg.status =
         StatusFlags::from_bits(pop_stack(cpu)?).expect("Flags popped from stack invalid.");
     Ok(0)
 }
 
-fn rol(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn rol(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let carry = if cpu.reg.status.contains(StatusFlags::CARRY) {
         1
     } else {
@@ -594,7 +595,7 @@ fn rol(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     Ok(0)
 }
 
-fn ror(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn ror(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let carry = if cpu.reg.status.contains(StatusFlags::CARRY) {
         0x80
     } else {
@@ -625,7 +626,7 @@ fn ror(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     Ok(0)
 }
 
-fn rti(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn rti(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let mut status = StatusFlags::from_bits(pop_stack(cpu)?)
         .expect("Status flags popped from stack are invalid.");
     status.remove(StatusFlags::BREAK);
@@ -636,12 +637,12 @@ fn rti(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     Ok(0)
 }
 
-fn rts(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn rts(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.pc = pop_stack_addr(cpu)?;
     Ok(0)
 }
 
-fn sbc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn sbc(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     // A - M - ~C = A + -M - ~C = A + ~M + 1 - (1-C) = A + ~M + C
     let crossed = cross_page_boundary(am, cpu);
 
@@ -671,74 +672,74 @@ fn sbc(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
     }
 }
 
-fn sec(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn sec(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.status.insert(StatusFlags::CARRY);
     Ok(0)
 }
 
-fn sed(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn sed(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.status.insert(StatusFlags::DECIMAL);
     Ok(0)
 }
 
-fn sei(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn sei(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.status.insert(StatusFlags::INTERRUPT_DISABLE);
     Ok(0)
 }
 
-fn sta(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn sta(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let addr = effective_addr(am, cpu)?;
     cpu.bus.write(addr, cpu.reg.a)?;
     // TODO: Check if addr is 0x4014 (DMA)
     Ok(0)
 }
 
-fn stx(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn stx(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let addr = effective_addr(am, cpu)?;
     cpu.bus.write(addr, cpu.reg.x)?;
     Ok(0)
 }
 
-fn sty(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn sty(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let addr = effective_addr(am, cpu)?;
     cpu.bus.write(addr, cpu.reg.y)?;
     Ok(0)
 }
 
-fn tax(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn tax(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.x = cpu.reg.a;
     set_negative_flag(cpu, cpu.reg.x);
     set_zero_flag(cpu, cpu.reg.x);
     Ok(0)
 }
 
-fn tay(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn tay(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.y = cpu.reg.a;
     set_negative_flag(cpu, cpu.reg.y);
     set_zero_flag(cpu, cpu.reg.y);
     Ok(0)
 }
 
-fn tsx(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn tsx(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.x = cpu.reg.sp;
     set_negative_flag(cpu, cpu.reg.x);
     set_zero_flag(cpu, cpu.reg.x);
     Ok(0)
 }
 
-fn txa(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn txa(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.a = cpu.reg.x;
     set_negative_flag(cpu, cpu.reg.a);
     set_zero_flag(cpu, cpu.reg.a);
     Ok(0)
 }
 
-fn txs(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn txs(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.sp = cpu.reg.x;
     Ok(0)
 }
 
-fn tya(_: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
+fn tya(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     cpu.reg.a = cpu.reg.y;
     set_negative_flag(cpu, cpu.reg.a);
     set_zero_flag(cpu, cpu.reg.a);

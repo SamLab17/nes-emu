@@ -197,3 +197,26 @@ impl TryFrom<&Vec<u8>> for INesFile {
             })
     }
 }
+
+#[cfg(test)]
+mod parse_test {
+    use bit::BitIndex;
+
+    #[test]
+    fn bit_crate() {
+        let mut x: u16 = 0x00FE;
+        // Check if set_bit_range is in-place
+        x.set_bit_range(8..16, 0xCA);
+        assert_eq!(x, 0xCAFE);
+        x.set_bit_range(0..8, 0x17);
+        assert_eq!(x, 0xCA17);
+
+        // bit_range does the proper shifting
+        let y: u16 = 0x1742;
+        assert_eq!(y.bit_range(0..4), 2);
+        assert_eq!(y.bit_range(4..8), 0x4);
+        assert_eq!(y.bit_range(0..8), 0x42);
+        assert_eq!(y.bit_range(8..12), 0x7);
+        assert_eq!(y.bit_range(8..16), 0x17);
+    }
+}

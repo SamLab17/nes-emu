@@ -1,5 +1,6 @@
-use super::decode::decode_instr;
+use super::decode::fetch_instr;
 use super::exec::exec_instr;
+use super::isa::Instr;
 use super::reg::{Registers, StatusFlags};
 use crate::cart::cart::Cartridge;
 use crate::cart::mock::mock_cart;
@@ -7,7 +8,7 @@ use crate::error::Result;
 use crate::mem::bus::MemoryBusBuilder;
 use crate::mem::utils::make_address;
 use crate::mem::{bus::MemoryBus, device::MemoryDevice};
-use crate::ppu::ppu::Ppu;
+use crate::ppu::ppu::{Ppu, Frame};
 
 pub const STACK_OFFSET: u16 = 0x1000;
 
@@ -28,10 +29,14 @@ impl Interrupt {
     }
 }
 
+const NUM_TICKS_PER_CPU_CYCLE: u8 = 3;
+
 pub struct Cpu {
     pub reg: Registers,
     pub bus: MemoryBus,
     pub interrupt: Option<Interrupt>,
+    cycles_left: u16,
+    ticks_left : u8,
 }
 
 impl Cpu {
@@ -43,7 +48,9 @@ impl Cpu {
                 ..Registers::default()
             },
             bus: MemoryBusBuilder::new().with_cart(cart).build(),
-            interrupt: None,
+            interrupt: Some(Interrupt::Reset),
+            cycles_left: 0,
+            ticks_left: 0,
         }
     }
 
@@ -53,11 +60,21 @@ impl Cpu {
             reg: Default::default(),
             bus: MemoryBusBuilder::new().with_ram(init_ram).build(),
             interrupt: None,
+            cycles_left: 0,
+            ticks_left: 0,
         }
     }
 
+    pub fn reset(&mut self) -> Result<()> {
+        self.reg.sp -= 3;
+        self.reg.status.insert(StatusFlags::INTERRUPT_DISABLE);
+        self.interrupt = Some(Interrupt::Reset);
+        self.bus.ppu.reset()?;
+        Ok(())
+    }
+
     // Returns the number of cycles the instruction takes
-    pub fn run_next_instr(&mut self) -> Result<u8> {
+    fn run_next_instr(&mut self) -> Result<u16> {
         // Check for interrupts
         if let Some(interrupt) = self.interrupt {
             let interrupts_enabled = !self.reg.status.contains(StatusFlags::INTERRUPT_DISABLE);
@@ -66,12 +83,55 @@ impl Cpu {
                 let isr_addr = make_address(self.bus.read(vector)?, self.bus.read(vector + 1)?);
                 // Jump to Interrupt Handler
                 self.reg.pc = isr_addr;
+                // Clear interrupt
+                self.interrupt = None;
             }
         }
 
+        let pc = self.reg.pc;
         // Decode and run the next instruction
-        exec_instr(decode_instr(self)?, self)
+        let i = fetch_instr(self)?;
+        // println!("0x{:X}: {}", pc, i);
+        exec_instr(i, self)
     }
+
+    fn cycle(&mut self) -> Result<()> {
+        if self.cycles_left == 0 {
+            self.cycles_left = self.run_next_instr()?;
+        } else {
+            self.cycles_left -= 1;
+        }
+        Ok(())
+    }
+
+    pub fn system_tick(&mut self) -> Result<Option<Frame>> {
+        let frame = self.bus.ppu_tick()?;
+
+        if self.ticks_left == 0 {
+            self.cycle()?;
+            self.ticks_left = NUM_TICKS_PER_CPU_CYCLE;
+        } else {
+            self.ticks_left -= 1;
+        }
+
+        Ok(frame)
+    }
+
+    pub fn next_frame(&mut self) -> Result<Frame> {
+        let mut num_ticks = 0;
+        loop {
+            num_ticks += 1;
+            if let Some(frame) = self.system_tick()? {
+                println!("num ticks to render: {num_ticks}");
+                return Ok(frame);
+            }
+        }
+    }
+
+    pub fn debug_frame(&self) -> Frame {
+        self.bus.ppu.buffer
+    }
+
 }
 
 /*
