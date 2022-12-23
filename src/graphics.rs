@@ -1,15 +1,13 @@
 use nes_emu::ppu::ppu::Frame;
-use sdl2::EventPump;
-use sdl2::pixels::Color;
-use sdl2::event::{Event, EventPollIterator};
-use sdl2::keyboard::Keycode;
-use sdl2::rect::{Point, Rect};
+use sdl2::{EventPump, Sdl};
+use sdl2::event::EventPollIterator;
+use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
-use std::time::Duration;
 use crate::error::Result;
 
 pub struct NesEmuGraphics {
+    context: Sdl,
     canvas: Canvas<Window>,
     event_pump: EventPump,
     iscale: u32
@@ -18,7 +16,6 @@ pub struct NesEmuGraphics {
 impl NesEmuGraphics {
     const WIDTH: u32 = 256;
     const HEIGHT: u32 = 240;
-    const DEFAULT_SCALE: u32 = 2;
     const TITLE: &'static str = "nes-emu";
 
     pub fn new(iscale: u32) -> Self {
@@ -34,7 +31,7 @@ impl NesEmuGraphics {
         canvas.clear();
         let event_pump = sdl_context.event_pump().unwrap();
         
-        NesEmuGraphics { canvas, event_pump, iscale }
+        NesEmuGraphics { context: sdl_context, canvas, event_pump, iscale }
     }
 
     pub fn events(&mut self) -> EventPollIterator {
@@ -55,6 +52,14 @@ impl NesEmuGraphics {
         }
         self.canvas.present();
         Ok(())
+    }
+
+    pub fn performance_frequency(&self) -> Result<u64> {
+        Ok(self.context.timer()?.performance_frequency())
+    }
+
+    pub fn performance_counter(&self) -> Result<u64> {
+        Ok(self.context.timer()?.performance_counter())
     }
 
 }

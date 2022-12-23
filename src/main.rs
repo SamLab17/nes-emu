@@ -8,10 +8,6 @@ mod graphics;
 
 use ines::parse::INesFile;
 
-use core::num;
-use std::cmp::min;
-use std::ops::Sub;
-use std::process::exit;
 use std::{env, fs, path::Path, error::Error};
 use cpu::cpu::Cpu;
 use graphics::NesEmuGraphics;
@@ -38,16 +34,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut running = true;
 
-    const FPS: u32 = 60;
-    const NANOS_PER_FRAME: u32 = 1_000_000_000 / FPS;
+    const FPS: f64 = 62.0;
 
-    let mut prev_time = Instant::now();
     let start_time = Instant::now();
     let mut paused = false;
 
     let mut num_frames = 0;
     // Main loop
     while running {
+        let pre_time = graphics.performance_counter()?; 
 
         let events = graphics.events().into_iter().collect::<Vec<Event>>();
         // Poll for events
@@ -56,23 +51,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Event::Quit{..} | Event::KeyDown { keycode: Some(Keycode::Escape), ..} => {
                     running = false;
                 },
-                Event::KeyDown { keycode: Some(Keycode::P), ..} => {
-                    // graphics.render_frame(cpu.next_frame()?)?;
-                    cpu.system_tick()?;
-                    graphics.render_frame(cpu.debug_frame())?;
-                }
                 Event::KeyDown { keycode: Some(Keycode::C), ..} => {
-                    for _ in 0..300 {
+                    paused = true;
+                    for _ in 0..3 {
                         cpu.system_tick()?;
                     }
                     graphics.render_frame(cpu.debug_frame())?;
                 }
                 Event::KeyDown { keycode: Some(Keycode::F), ..} => {
+                    paused = true;
                     graphics.render_frame(cpu.next_frame()?)?;
                 },
                 Event::KeyDown { keycode: Some(Keycode::Space), ..} => {
                     paused = !paused;
-                    prev_time = Instant::now();
                 }
                 _ => {}
             }
@@ -81,12 +72,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         if !paused {
             graphics.render_frame(cpu.next_frame()?)?;
             num_frames += 1;
+            let curr_time = graphics.performance_counter()?;
 
-            let curr_time = Instant::now();
-            let time_to_render = curr_time - prev_time;
-            let sleep = (NANOS_PER_FRAME as u128) - min(time_to_render.as_nanos(), NANOS_PER_FRAME as u128);
-            prev_time = curr_time;
-            ::std::thread::sleep(Duration::new(0, sleep.try_into().unwrap()));
+            let render_time = (curr_time - pre_time) as f64 / (graphics.performance_frequency()? as f64);
+            let sleep = f64::max((1.0/FPS) - render_time, 0.0);
+            std::thread::sleep(Duration::from_secs_f64(sleep));
         }
     }
 

@@ -158,18 +158,18 @@ impl Ppu {
         // let cart = dma_bus.cart;
 
         // Let's render random noise
-        if self.scanline >= 0 && self.scanline < 240 && self.cycle < 256 {
-            let row = self.scanline as usize;
-            let col = self.cycle as usize;
-            let mut rng = rand::thread_rng();
-            // let color = if rng.gen_bool(0.5) {
-            //     self.color_map.get(&0x0f)
-            // } else {
-            //     self.color_map.get(&0x30)
-            // }.expect("Color missing");
-            let color = self.color_map.get(&0x0F).unwrap();
-            self.buffer[row][col] = *color;
-        }
+        // if self.scanline >= 0 && self.scanline < 240 && self.cycle < 256 {
+        //     let row = self.scanline as usize;
+        //     let col = self.cycle as usize;
+        //     let mut rng = rand::thread_rng();
+        //     let color = if rng.gen_bool(0.5) {
+        //         self.color_map.get(&0x0f)
+        //     } else {
+        //         self.color_map.get(&0x30)
+        //     }.expect("Color missing");
+        //     // let color = self.color_map.get(&0x0F).unwrap();
+        //     self.buffer[row][col] = *color;
+        // }
 
         self.cycle += 1;
         if self.cycle >= 341 {
