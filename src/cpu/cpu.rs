@@ -109,22 +109,35 @@ impl Cpu {
                 push_stack(self, self.reg.status.bits())?;
 
                 // Jump to Interrupt Handler
-                self.reg.pc = make_address(self.bus.read(isr_addr)?, self.bus.read(isr_addr + 1)?);
+                // self.reg.pc = make_address(self.bus.read(isr_addr)?, self.bus.read(isr_addr + 1)?);
+                self.reg.pc = isr_addr;
+                
                 // Clear interrupt
                 self.interrupt = None;
+
                 return Ok(interrupt.num_cycles())
             }
         }
+        // Address of the instruction we're about to fetch (fetch_instr modifies self.reg.pc)
         let pc = self.reg.pc;
         // Decode and run the next instruction
         let (i, ncycles) = fetch_instr(self)?;
-        print!("{:X} {:<40} ", pc, format!("{}", i));
-        print!("{}", self.reg); 
-        print!(" {:3},{:3}", self.bus.ppu.scanline, self.bus.ppu.cycle);
-        println!(" CYC:{}", self.log_cycles);
+        // print!("{:X} {:<40} ", pc, format!("{}", i));
+        // print!("{}", self.reg); 
+        // print!(" {:3},{:3}", self.bus.ppu.scanline, self.bus.ppu.cycle);
+        // println!(" CYC:{}", self.log_cycles);
 
         // println!("{:04X} {:?} {} PPU:{:3},{:3} CYC:{}", pc, i.op, self.reg, self.bus.ppu.scanline, self.bus.ppu.cycle, self.log_cycles);
-        Ok(ncycles + exec_instr(i, self)?)
+        match exec_instr(i, self) {
+            Ok(extra_cycles) => Ok(ncycles + extra_cycles),
+            Err(e) => {
+                eprintln!("An error occurred trying to execute {i}");
+                eprintln!("Program Counter: 0x{pc:04X}");
+                eprintln!("Error: {:?}", e);
+                eprintln!("CPU Registers: {}", self.reg);
+                Err(e)
+            }
+        }
     }
 
     fn cycle(&mut self) -> Result<()> {
@@ -145,7 +158,7 @@ impl Cpu {
         } 
         self.ticks_left -= 1;
         
-        let (frame, int) = self.bus.ppu_tick()?;
+        let (frame, int) = self.bus.ppu.tick()?;
         self.interrupt = int;
 
         Ok(frame)

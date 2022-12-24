@@ -13,11 +13,12 @@ impl Default for Ram {
     }
 }
 
-impl MemoryDevice for Ram {
+impl Ram {
 
-    fn name(&self) -> String { "RAM".into() }
+}
 
-    fn read(&mut self, addr: u16) -> Result<u8> {
+impl Ram {
+    pub fn read(&self, addr: u16) -> Result<u8> {
         if addr > 0x1FFF {
             Err(Box::new(MemoryError::InvalidAddress(addr)))
         } else {
@@ -25,7 +26,7 @@ impl MemoryDevice for Ram {
         }
     }
 
-    fn write(&mut self, addr: u16, byte: u8) -> Result<()> {
+    pub fn write(&mut self, addr: u16, byte: u8) -> Result<()> {
         if addr > 0x1FFF {
             Err(Box::new(MemoryError::InvalidAddress(addr)))
         } else {
@@ -33,15 +34,17 @@ impl MemoryDevice for Ram {
             Ok(())
         }
     }
-}
 
-impl Ram {
     pub fn from(bytes: &[u8]) -> Self {
         if bytes.len() > RAM_SIZE as usize{
             panic!("RAM size is smaller than bytes specified.")
         }
         let mut r: Self = Default::default();
-        r.write_many(0, bytes).expect("bytes too large");
+        let mut addr = 0;
+        for byte in bytes.iter() {
+            r.mem[addr] = *byte;
+            addr += 1
+        }
         r
     }
 }

@@ -16,7 +16,7 @@ use super::{
 };
 use crate::cpu::cpu::Cpu;
 use crate::mem::utils::{hi_byte, lo_byte, make_address, page_num};
-use crate::mem::device::MemoryDevice;
+use crate::mem::device::{MemoryDevice, rd_only};
 
 use super::deref::{deref_address, deref_byte};
 
@@ -717,19 +717,34 @@ fn sta(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let addr = effective_addr(am, cpu)?;
     cpu.bus.write(addr, cpu.reg.a)?;
     // TODO: Check if addr is 0x4014 (DMA) ?
-    Ok(0)
+    if addr == 0x4014 {
+        // FIXME: Make odd/even cycle sensitive?
+        Ok(513)
+    } else {
+        Ok(0)
+    }
 }
 
 fn stx(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let addr = effective_addr(am, cpu)?;
     cpu.bus.write(addr, cpu.reg.x)?;
-    Ok(0)
+    if addr == 0x4014 {
+        // FIXME: Make odd/even cycle sensitive?
+        Ok(513)
+    } else {
+        Ok(0)
+    }
 }
 
 fn sty(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let addr = effective_addr(am, cpu)?;
     cpu.bus.write(addr, cpu.reg.y)?;
-    Ok(0)
+    if addr == 0x4014 {
+        // FIXME: Make odd/even cycle sensitive?
+        Ok(513)
+    } else {
+        Ok(0)
+    }
 }
 
 fn tax(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {

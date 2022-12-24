@@ -24,18 +24,18 @@ impl fmt::Display for AddressingMode {
         use AddressingMode::*;
         match *self {
             Accumulator => write!(f, "A"),
-            Absolute(addr) => write!(f, "${:04X}  (Abs)", addr),
-            AbsoluteX(addr) => write!(f, "${:04X},X  (AbsX)", addr),
-            AbsoluteY(addr) => write!(f, "${:04X},Y  (AbsY)", addr),
-            Immediate(val) => write!(f, "#${:02X}  (Imm)", val),
+            Absolute(addr) => write!(f, "${:04X} (Abs)", addr),
+            AbsoluteX(addr) => write!(f, "${:04X},X (AbsX)", addr),
+            AbsoluteY(addr) => write!(f, "${:04X},Y (AbsY)", addr),
+            Immediate(val) => write!(f, "#${:02X} (Imm)", val),
             Implied => write!(f, "  (Imp)"),
-            Indirect(addr) => write!(f, "(${:04X})  (Ind)", addr),
-            XIndirect(offset) => write!(f, "(${:02X}, X)  (XInd)", offset),
-            IndirectY(offset) => write!(f, "(${:02X}), Y  (IndY)", offset),
-            Relative(offset) => write!(f, "${:02X}  (Rel)", offset),
-            ZeroPage(offset) => write!(f, "${:02X}  (Zpg)", offset),
-            ZeroPageX(offset) => write!(f, "${:02X},X  (ZpgX)", offset),
-            ZeroPageY(offset) => write!(f, "${:02X},Y  (ZpgY)", offset),
+            Indirect(addr) => write!(f, "(${:04X}) (Ind)", addr),
+            XIndirect(offset) => write!(f, "(${:02X}, X) (XInd)", offset),
+            IndirectY(offset) => write!(f, "(${:02X}), Y (IndY)", offset),
+            Relative(offset) => write!(f, "${:02X} (Rel)", offset),
+            ZeroPage(offset) => write!(f, "${:02X} (Zpg)", offset),
+            ZeroPageX(offset) => write!(f, "${:02X},X (ZpgX)", offset),
+            ZeroPageY(offset) => write!(f, "${:02X},Y (ZpgY)", offset),
         }
     }
 }

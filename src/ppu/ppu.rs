@@ -3,20 +3,16 @@ use std::rc::Rc;
 
 // use bit::BitIndex;
 use bitfield::bitfield;
-use nom::combinator::rest_len;
 
 use crate::cart::cart::Cartridge;
-use crate::cart::mock::mock_cart;
-use crate::cpu::cpu::{Cpu, Interrupt};
-use crate::mem::bus::{MemoryBus};
-use crate::mem::device::{MemoryDevice, MemoryError, inv_addr, rd_only, wr_only};
+use crate::cpu::cpu::Interrupt;
+use crate::mem::device::{inv_addr, rd_only, wr_only};
 use crate::error::Result;
 use crate::mem::ram::Ram;
-use rand::Rng;
 use sdl2::pixels::Color;
 
 
-use super::colors::{load_color_map, ColorMap, load_default_color_map};
+use super::colors::{load_color_map, ColorMap};
 
 pub type Frame = Box<[[Color; 256]; 240]>;
 
@@ -99,12 +95,14 @@ impl PpuBuilder {
             color_map: load_color_map(self.palette_file.as_deref())?,
             cart: self.cart,
             vram: [0u8; 1024*2],
+            oam: [0u8; 256],
             palettes: [0u8; 256],
             reg: PpuReg::default(),
             v: 0,
             t: 0,
             x: 0,
             w: false,
+            odd_frame: false,
             cycle: 0,
             scanline: 0,
             buffer: Box::new([[Color::BLACK; 256]; 240])
@@ -117,6 +115,7 @@ pub struct Ppu {
     cart: Rc<RefCell<Cartridge>>,
     color_map: ColorMap,
     vram: [u8; 1024 * 2],
+    oam: [u8; 256],
     palettes: [u8; 256],
     // Memory-mapped registers
     reg: PpuReg,
@@ -125,90 +124,13 @@ pub struct Ppu {
     t: u16,
     x: u8,
     w: bool,
+    odd_frame: bool,
     pub cycle: u64,
     pub scanline: i32,
 }
 
 impl Ppu {
-    // I honestly don't know why i'm allowed to have another "read" method
-    // for the Ppu type but oh well...
-    fn ppu_read(&self, addr: u16) -> Result<u8> {
-        match addr {
-            0x0000..=0x3EFF => self.cart.borrow_mut().ppu_read(addr, &self.vram),
-            0x3F00..=0x3FFF => Ok(self.palettes[(addr & 0x1F) as usize]),
-            _ => Err(inv_addr(addr))
-        }
-    }
-
-    fn ppu_write(&mut self, addr: u16, byte: u8) -> Result<()> {
-        match addr {
-            0x0000..=0x3EFF => self.cart.borrow_mut().ppu_write(addr, byte, &mut self.vram),
-            0x3F00..=0x3FFF => { self.palettes[(addr & 0x1F) as usize] = byte; Ok(()) }
-            _ => Err(inv_addr(addr))
-        }
-    }
-
-    pub fn reset(&mut self) -> Result<()> {
-        // todo!();
-        Ok(())
-    }
-
-    pub fn tick(&mut self, cpu_ram: &mut Ram) -> Result<(Option<Frame>, Option<Interrupt>)> {
-        // println!("ppu tick");
-        // Cartridge is needed to access character ROM
-        // Bus is needed to perform DMA from CPU to PPU
-        // let cart =&mut bus.cart;
-        let mut ret_frame = None;
-        let mut ret_int = None;
-        // let cart = dma_bus.cart;
-
-        if self.scanline == 241 && self.cycle == 1 {
-            self.reg.status.set_vblank_start(true);
-            println!("vblank start");
-            if self.reg.control.get_nmi_toggle() {
-                ret_int = Some(Interrupt::NonMaskable);
-            }
-        }
-
-        if self.scanline == -1 && self.cycle == 1 {
-            println!("vblank end");
-            self.reg.status.set_vblank_start(false);
-        }
-
-        // Let's render random noise
-        // if self.scanline >= 0 && self.scanline < 240 && self.cycle < 256 {
-        //     let row = self.scanline as usize;
-        //     let col = self.cycle as usize;
-        //     let mut rng = rand::thread_rng();
-        //     let color = if rng.gen_bool(0.5) {
-        //         self.color_map.get(&0x0f)
-        //     } else {
-        //         self.color_map.get(&0x30)
-        //     }.expect("Color missing");
-        //     // let color = self.color_map.get(&0x0F).unwrap();
-        //     self.buffer[row][col] = *color;
-        // }
-
-        self.cycle += 1;
-        if self.cycle >= 341 {
-            self.cycle = 0;
-            self.scanline += 1;
-            if self.scanline >= 261 {
-                self.scanline = -1;
-                // frame is done
-                ret_frame = Some(self.buffer.clone())
-            }
-        }
-
-        Ok((ret_frame, ret_int))
-    }
-}
-
-impl MemoryDevice for Ppu {
-
-    fn name(&self) -> String { "PPU".into() }
-
-    fn read(&mut self, addr: u16) -> Result<u8> {
+    pub fn read(&mut self, addr: u16) -> Result<u8> {
         if addr < 0x2000 || (addr > 0x3FFF && addr != 0x4014) {
             return Err(inv_addr(addr))
         } else if addr == 0x4014 {
@@ -247,11 +169,16 @@ impl MemoryDevice for Ppu {
         }
     }
 
-    fn write(&mut self, addr: u16, byte: u8) -> Result<()> {
+    pub fn write(&mut self, addr: u16, byte: u8, cpu_ram: &Ram) -> Result<()> {
         if addr < 0x2000 || (addr > 0x3FFF && addr != 0x4014) {
             return Err(inv_addr(addr))
         } else if addr == 0x4014 {
-            Err(wr_only(addr))
+            // OAM DMA
+            let start = (byte as u16) << 8;
+            for offset in 0u16..=0xFF {
+                self.oam[offset as usize] = cpu_ram.read(start | offset)?;
+            }
+            Ok(())
         } else {
             assert!(addr >= 0x2000 && addr <= 0x3FFF);
             match addr & 0x7 {
@@ -297,7 +224,78 @@ impl MemoryDevice for Ppu {
             }
         }
     }
+
+    fn ppu_read(&self, addr: u16) -> Result<u8> {
+        match addr {
+            0x0000..=0x3EFF => self.cart.borrow_mut().ppu_read(addr, &self.vram),
+            0x3F00..=0x3FFF => Ok(self.palettes[(addr & 0x1F) as usize]),
+            _ => Err(inv_addr(addr))
+        }
+    }
+
+    fn ppu_write(&mut self, addr: u16, byte: u8) -> Result<()> {
+        match addr {
+            0x0000..=0x3EFF => self.cart.borrow_mut().ppu_write(addr, byte, &mut self.vram),
+            0x3F00..=0x3FFF => { self.palettes[(addr & 0x1F) as usize] = byte; Ok(()) }
+            _ => Err(inv_addr(addr))
+        }
+    }
+
+    pub fn reset(&mut self) -> Result<()> {
+        self.reg.control = PpuControl(0);
+        self.reg.mask = PpuMask(0);
+        self.reg.ppu_scroll = 0;
+        self.reg.ppu_addr = 0;
+        self.reg.ppu_data = 0;
+        self.odd_frame = false;
+        Ok(())
+    }
+
+    pub fn tick(&mut self) -> Result<(Option<Frame>, Option<Interrupt>)> {
+        let mut ret_frame = None;
+        let mut ret_int = None;
+
+        if self.scanline == 241 && self.cycle == 1 {
+            self.reg.status.set_vblank_start(true);
+            if self.reg.control.get_nmi_toggle() {
+                ret_int = Some(Interrupt::NonMaskable);
+            }
+        }
+
+        if self.scanline == -1 && self.cycle == 1 {
+            self.reg.status.set_vblank_start(false);
+        }
+
+        // Let's render random noise
+        // if self.scanline >= 0 && self.scanline < 240 && self.cycle < 256 {
+        //     let row = self.scanline as usize;
+        //     let col = self.cycle as usize;
+        //     let mut rng = rand::thread_rng();
+        //     let color = if rng.gen_bool(0.5) {
+        //         self.color_map.get(&0x0f)
+        //     } else {
+        //         self.color_map.get(&0x30)
+        //     }.expect("Color missing");
+        //     // let color = self.color_map.get(&0x0F).unwrap();
+        //     self.buffer[row][col] = *color;
+        // }
+
+        self.cycle += 1;
+        if self.cycle >= 341 {
+            self.cycle = 0;
+            self.scanline += 1;
+            if self.scanline >= 261 {
+                self.scanline = -1;
+                // frame is done
+                ret_frame = Some(self.buffer.clone());
+                self.odd_frame = !self.odd_frame;
+            }
+        }
+
+        Ok((ret_frame, ret_int))
+    }
 }
+
 
 #[cfg(test)]
 mod ppu_test {

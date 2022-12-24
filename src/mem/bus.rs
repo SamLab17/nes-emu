@@ -59,7 +59,7 @@ impl MemoryDevice for MemoryBus {
             0x0000..=0x1FFF => self.ram.read(addr),
             0x2000..=0x3FFF => self.ppu.read(addr),
             0x4014 => self.ppu.read(addr),
-            0x4000..=0x4017 => todo!("Read APU"),
+            0x4000..=0x4017 => Ok(0) /*todo!("Read APU")*/,
             0x4020..=0xFFFF => self.cart.borrow_mut().read(addr),
             _ => Err(inv_addr(addr))
         }
@@ -68,17 +68,11 @@ impl MemoryDevice for MemoryBus {
     fn write(&mut self, addr: u16, byte: u8) -> Result<()> {
         match addr {
             0x0000..=0x1FFF => self.ram.write(addr, byte),
-            0x2000..=0x3FFF => self.ppu.write(addr, byte),
-            0x4014 => self.ppu.write(addr, byte),
+            0x2000..=0x3FFF => self.ppu.write(addr, byte, &self.ram),
+            0x4014 => self.ppu.write(addr, byte, &self.ram),
             0x4000..=0x4017 => Ok(()),
             0x4020..=0xFFFF => self.cart.borrow_mut().write(addr, byte),
             _ => Err(inv_addr(addr))
         }
-    }
-}
-
-impl MemoryBus {
-    pub fn ppu_tick(&mut self) -> Result<(Option<Frame>, Option<Interrupt>)> {
-        self.ppu.tick( &mut self.ram)
     }
 }

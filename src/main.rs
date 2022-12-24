@@ -13,7 +13,6 @@ use cpu::cpu::Cpu;
 use graphics::NesEmuGraphics;
 
 use crate::cart::builder::build_cartridge;
-use crate::mem::device::MemoryDevice;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -32,11 +31,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     
     cpu.reset()?;
-    // for addr in 0xFFF0u16..0xFFFF {
-    //     println!("ram[{:X}] = {:0X}", addr, cpu.bus.read(addr)?);
-    // }
-    // cpu.reg.pc = 0xC000;
-    
 
     let mut graphics = NesEmuGraphics::new(3);
 
