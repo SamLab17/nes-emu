@@ -1,4 +1,4 @@
-use super::cart::{Cart, Cartridge};
+use super::cart::{Cart, Cartridge, ppu_inv_addr, ppu_rd_only};
 
 use crate::error::Result;
 use crate::mem::device::{MemoryDevice, MemoryError, inv_addr, rd_only};
@@ -69,12 +69,16 @@ impl Cart for Nrom256 {
         match addr {
             0x0000..=0x1FFF => Ok(self.chr_rom[addr as usize]),
             0x2000..=0x3EFF => Ok(vram[(addr & 0xFFF) as usize]),
-            _ => Err(inv_addr(addr))
+            _ => Err(ppu_inv_addr(addr))
         }
     }
 
     fn ppu_write(&mut self, addr: u16, byte: u8, vram: &mut [u8]) -> Result<()> {
-        todo!()
+        match addr {
+            0x0000..=0x1FFF => Err(ppu_rd_only(addr)),
+            0x2000..=0x3EFF => Ok(vram[(addr & 0xFFF) as usize] = byte),
+            _ => Err(ppu_inv_addr(addr))
+        }
     } 
 }
 

@@ -3,14 +3,14 @@ use std::fmt;
 
 bitflags! {
     pub struct StatusFlags: u8 {
-        const CARRY = 0b00000001;
-        const ZERO = 0b00000010;
+        const CARRY             = 0b00000001;
+        const ZERO              = 0b00000010;
         const INTERRUPT_DISABLE = 0b00000100;
-        const DECIMAL = 0b0000100;
-        const BREAK = 0b0001000;
-        const UNUSED = 0b00100000;
-        const OVERFLOW = 0b01000000;
-        const NEGATIVE = 0b10000000;
+        const DECIMAL           = 0b00001000;
+        const BREAK             = 0b00010000;
+        const UNUSED            = 0b00100000;
+        const OVERFLOW          = 0b01000000;
+        const NEGATIVE          = 0b10000000;
     }
 }
 
@@ -32,11 +32,20 @@ pub struct Registers {
 
 impl fmt::Display for Registers {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "A      : 0x{:X}", self.a)?;
-        write!(f, "X      : 0x{:X}", self.x)?;
-        write!(f, "Y      : 0x{:X}", self.y)?;
-        write!(f, "PC     : 0x{:X}", self.pc)?;
-        write!(f, "SP     : 0x{:X}", self.sp)?;
-        write!(f, "Status : 0x{:X}", self.status)
+        write!(
+            f,
+            "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+            self.a,
+            self.x,
+            self.y,
+            self.status.bits(),
+            self.sp
+        )
+        // write!(f, "A      : 0x{:X}", self.a)?;
+        // write!(f, "X      : 0x{:X}", self.x)?;
+        // write!(f, "Y      : 0x{:X}", self.y)?;
+        // write!(f, "PC     : 0x{:X}", self.pc)?;
+        // write!(f, "SP     : 0x{:X}", self.sp)?;
+        // write!(f, "Status : 0x{:X}", self.status)
     }
 }

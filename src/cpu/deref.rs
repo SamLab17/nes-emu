@@ -10,16 +10,16 @@ pub fn effective_addr(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     match am {
         Absolute(addr) => Ok(addr),
         AbsoluteX(addr) => Ok(addr + cpu.reg.x as u16),
-        AbsoluteY(addr) => Ok(addr + cpu.reg.y as u16),
+        AbsoluteY(addr) => Ok(addr.wrapping_add(cpu.reg.y as u16)),
         XIndirect(offset) => {
-            let lo = cpu.bus.read(((offset + cpu.reg.x) & 0xFF) as u16)?;
-            let hi = cpu.bus.read(((offset + cpu.reg.x + 1) & 0xFF) as u16)?;
+            let lo = cpu.bus.read((offset.wrapping_add(cpu.reg.x) & 0xFF) as u16)?;
+            let hi = cpu.bus.read((offset.wrapping_add(cpu.reg.x).wrapping_add(1) & 0xFF) as u16)?;
             Ok(make_address(lo, hi))
         }
         IndirectY(offset) => {
             let lo = cpu.bus.read(offset as u16)?;
-            let hi = cpu.bus.read((offset + 1) as u16)?;
-            Ok(make_address(lo, hi) + (cpu.reg.y as u16))
+            let hi = cpu.bus.read((offset.wrapping_add(1)) as u16)?;
+            Ok(make_address(lo, hi).wrapping_add(cpu.reg.y as u16))
         }
         ZeroPage(offset) => Ok(offset as u16),
         ZeroPageX(offset) => Ok(((offset as u16) + (cpu.reg.x as u16)) & 0xFF),
@@ -49,9 +49,16 @@ pub fn deref_address(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     use AddressingMode::*;
     match am {
         Indirect(addr) => {
-            let lo = cpu.bus.read(addr)?;
-            let hi = cpu.bus.read(addr + 1)?;
-            Ok(make_address(lo, hi))
+            if addr & 0xFF == 0xFF {
+                // Simulate hardware bug when crossing pages
+                let lo = cpu.bus.read(addr)?;
+                let hi = cpu.bus.read(addr & 0xFF00)?;
+                Ok(make_address(lo, hi))
+            } else {
+                let lo = cpu.bus.read(addr)?;
+                let hi = cpu.bus.read(addr + 1)?;
+                Ok(make_address(lo, hi))
+            }
         }
         Absolute(addr) => Ok(addr),
         Relative(offset) => {
@@ -206,6 +213,8 @@ mod addressing_mode_tests {
         cpu.reg.pc = 0x0123;
         // 0x0123 - 0x3 = 0x1230
         assert_eq!(deref_address(Relative(0xFD), &mut cpu).unwrap(), 0x120);
+        // 0x0123 - 0x5 = 0x11E
+        assert_eq!(deref_address(Relative(0xFB), &mut cpu).unwrap(), 0x11E);
         // 0x0123 - 0x28 = 0xFB
         assert_eq!(deref_address(Relative(0xD8), &mut cpu).unwrap(), 0xFB);
         // 0x0123 - 0x80 = 0xA3

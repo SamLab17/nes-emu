@@ -3,9 +3,11 @@ use std::rc::Rc;
 
 // use bit::BitIndex;
 use bitfield::bitfield;
+use nom::combinator::rest_len;
 
 use crate::cart::cart::Cartridge;
 use crate::cart::mock::mock_cart;
+use crate::cpu::cpu::{Cpu, Interrupt};
 use crate::mem::bus::{MemoryBus};
 use crate::mem::device::{MemoryDevice, MemoryError, inv_addr, rd_only, wr_only};
 use crate::error::Result;
@@ -123,8 +125,8 @@ pub struct Ppu {
     t: u16,
     x: u8,
     w: bool,
-    cycle: u64,
-    scanline: i32,
+    pub cycle: u64,
+    pub scanline: i32,
 }
 
 impl Ppu {
@@ -147,15 +149,31 @@ impl Ppu {
     }
 
     pub fn reset(&mut self) -> Result<()> {
-        todo!();
+        // todo!();
+        Ok(())
     }
 
-    pub fn tick(&mut self, cpu_ram: &mut Ram) -> Result<Option<Frame>> {
+    pub fn tick(&mut self, cpu_ram: &mut Ram) -> Result<(Option<Frame>, Option<Interrupt>)> {
+        // println!("ppu tick");
         // Cartridge is needed to access character ROM
         // Bus is needed to perform DMA from CPU to PPU
         // let cart =&mut bus.cart;
         let mut ret_frame = None;
+        let mut ret_int = None;
         // let cart = dma_bus.cart;
+
+        if self.scanline == 241 && self.cycle == 1 {
+            self.reg.status.set_vblank_start(true);
+            println!("vblank start");
+            if self.reg.control.get_nmi_toggle() {
+                ret_int = Some(Interrupt::NonMaskable);
+            }
+        }
+
+        if self.scanline == -1 && self.cycle == 1 {
+            println!("vblank end");
+            self.reg.status.set_vblank_start(false);
+        }
 
         // Let's render random noise
         // if self.scanline >= 0 && self.scanline < 240 && self.cycle < 256 {
@@ -182,7 +200,7 @@ impl Ppu {
             }
         }
 
-        Ok(ret_frame)
+        Ok((ret_frame, ret_int))
     }
 }
 
@@ -201,6 +219,7 @@ impl MemoryDevice for Ppu {
                 0 => Err(wr_only(addr)),
                 1 => Err(wr_only(addr)),
                 2 => {
+                    // Status register
                    let ret = (self.reg.status.0 & 0xE0) | (self.reg.ppu_data_buffer & 0x1F);
                    self.reg.status.set_vblank_start(false);
                    self.reg.ppu_addr_latch = false;
@@ -215,6 +234,11 @@ impl MemoryDevice for Ppu {
                     self.reg.ppu_data_buffer = self.ppu_read(self.reg.ppu_addr)?;
                     if self.reg.ppu_addr > 0x3F00 {
                         data = self.reg.ppu_data_buffer;
+                    }
+                    if self.reg.control.get_vram_inc() {
+                        self.reg.ppu_addr += 32
+                    } else {
+                        self.reg.ppu_addr += 1
                     }
                     Ok(data)
                 },
@@ -261,13 +285,13 @@ impl MemoryDevice for Ppu {
                     Ok(())
                 },
                 7 => {
+                    let ret = self.ppu_write(self.reg.ppu_addr, byte);
                     if self.reg.control.get_vram_inc() {
-                        self.v += 1;
+                        self.reg.ppu_addr += 32
                     } else {
-                        self.v += 32;
+                        self.reg.ppu_addr += 1
                     }
-                    self.v &= 0x7FFF;
-                    Ok(self.vram[(self.v & 0x3FFF) as usize] = byte)
+                    ret
                 },
                 _ => panic!("impossible")
             }
