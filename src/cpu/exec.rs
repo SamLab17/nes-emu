@@ -716,7 +716,6 @@ fn sei(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
 fn sta(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let addr = effective_addr(am, cpu)?;
     cpu.bus.write(addr, cpu.reg.a)?;
-    // TODO: Check if addr is 0x4014 (DMA) ?
     if addr == 0x4014 {
         // FIXME: Make odd/even cycle sensitive?
         Ok(513)

@@ -106,6 +106,7 @@ impl PpuBuilder {
             cycle: 0,
             scanline: 0,
             buffer: Box::new([[Color::BLACK; 256]; 240])
+            // buffer: [[Color::BLACK; 256]; 240]
         })
     }
 }
