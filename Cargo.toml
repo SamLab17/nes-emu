@@ -31,6 +31,10 @@ funtime = "0.3.1"
 lazy_static="1.4.0"
 nom = "7.1.1"
 rand = "0.8.5"
-sdl2 = "0.35.2"
 strum = "0.24"
 strum_macros = "0.24"
+
+[dependencies.sdl2]
+version = "0.35.2"
+default-features = false
+features = ["unsafe_textures"]
