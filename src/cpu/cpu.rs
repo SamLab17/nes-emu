@@ -3,12 +3,11 @@ use super::exec::{exec_instr, push_stack_addr, push_stack};
 use super::isa::Instr;
 use super::reg::{Registers, StatusFlags};
 use crate::cart::cart::Cartridge;
-use crate::cart::mock::mock_cart;
 use crate::error::Result;
 use crate::mem::bus::MemoryBusBuilder;
 use crate::mem::utils::make_address;
 use crate::mem::{bus::MemoryBus, device::MemoryDevice};
-use crate::ppu::ppu::{Ppu, Frame};
+use crate::ppu::ppu::{Frame};
 
 pub const STACK_OFFSET: u16 = 0x100;
 
@@ -94,7 +93,7 @@ impl Cpu {
     }
 
     // Returns the number of cycles the instruction takes
-    fn run_next_instr(&mut self) -> Result<u16> {
+    fn run_next_instr(&mut self, log: Option<&mut String>) -> Result<u16> {
         // Check for interrupts
         if let Some(interrupt) = self.interrupt {
             let interrupts_enabled = !self.reg.status.contains(StatusFlags::INTERRUPT_DISABLE);
@@ -123,11 +122,13 @@ impl Cpu {
         // Decode and run the next instruction
         let (i, ncycles) = fetch_instr(self)?;
         // print!("{:X} {:<40} ", pc, format!("{}", i));
-        // print!("{}", self.reg); 
+        // println!("{}", self.reg); 
         // print!(" {:3},{:3}", self.bus.ppu.scanline, self.bus.ppu.cycle);
         // println!(" CYC:{}", self.log_cycles);
-
-        // println!("{:04X} {:?} {} PPU:{:3},{:3} CYC:{}", pc, i.op, self.reg, self.bus.ppu.scanline, self.bus.ppu.cycle, self.log_cycles);
+        if let Some(log) = log {
+            log.push_str(&format!("{:04X} {:?} {} PPU:{:3},{:3} CYC:{}\n", pc, i.op, self.reg, self.bus.ppu.scanline, self.bus.ppu.cycle, self.log_cycles));
+        };
+        
         match exec_instr(i, self) {
             Ok(extra_cycles) => Ok(ncycles + extra_cycles),
             Err(e) => {
@@ -140,10 +141,26 @@ impl Cpu {
         }
     }
 
-    fn cycle(&mut self) -> Result<()> {
+    pub fn peek_next_instr(&mut self, offset: u16) -> Result<(u16, Instr)> {
+        let restore_pc = self.reg.pc;
+        let mut prev_pc = restore_pc;
+        let mut i = 0;
+        while let Ok((instr, _)) = fetch_instr(self) {
+            if i >= offset {
+                self.reg.pc = restore_pc;
+                return Ok((prev_pc, instr))
+            }
+            prev_pc = self.reg.pc;
+            i += 1;
+        } 
+        self.reg.pc = restore_pc;
+        Err("no valid instructions left".into())
+    }
+
+    fn cycle(&mut self, log: Option<&mut String>) -> Result<()> {
         // println!("cpu cycle");
         if self.cycles_left == 0 {
-            self.cycles_left = self.run_next_instr()?;
+            self.cycles_left = self.run_next_instr(log)?;
         }
         
         self.cycles_left -= 1;
@@ -151,9 +168,9 @@ impl Cpu {
         Ok(())
     }
 
-    pub fn system_tick(&mut self) -> Result<Option<Frame>> {
+    pub fn system_tick(&mut self, log: Option<&mut String>) -> Result<Option<Frame>> {
         if self.ticks_left == 0 {
-            self.cycle()?;
+            self.cycle(log)?;
             self.ticks_left = NUM_TICKS_PER_CPU_CYCLE;
         } 
         self.ticks_left -= 1;
@@ -166,7 +183,7 @@ impl Cpu {
 
     pub fn next_frame(&mut self) -> Result<Frame> {
         loop {
-            if let Some(frame) = self.system_tick()? {
+            if let Some(frame) = self.system_tick(None)? {
                 return Ok(frame);
             }
         }
@@ -175,5 +192,33 @@ impl Cpu {
     pub fn debug_frame(&self) -> Frame {
         self.bus.ppu.buffer.clone()
     }
+}
 
+#[cfg(test)]
+mod cpu_test {
+    use crate::{cpu::cpu::Cpu, cart::{builder::build_cartridge}, ines::parse::INesFile};
+
+    static NESTEST: &'static [u8] = include_bytes!("../../roms/nestest.nes");
+    static NESTEST_LOG: &'static str = include_str!("../../nestest-trimmed.log");
+
+    #[test]
+    fn nestest() {
+        let rom = INesFile::try_from(&NESTEST.to_vec()).unwrap();
+        let mut cpu = Cpu::new(build_cartridge(&rom).unwrap());
+        cpu.reset().unwrap();
+        cpu.reg.pc = 0xC000;
+
+        const N_INSTR: usize = 5000;
+        let mut log = String::new();
+        let mut n = 0;
+        while n < N_INSTR {
+            if cpu.cycles_left == 0 && cpu.ticks_left == 0 {
+                n += 1;
+            }
+            cpu.system_tick(Some(&mut log)).unwrap();
+        }
+        
+
+        assert_eq!(log.trim_end(), NESTEST_LOG.lines().take(N_INSTR).collect::<Vec<&str>>().join("\n"))
+    }
 }

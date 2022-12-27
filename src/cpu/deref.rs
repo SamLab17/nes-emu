@@ -236,8 +236,9 @@ mod addressing_mode_tests {
         cpu.bus.write(0x101, 0x3a).unwrap();
         assert_eq!(deref_address(Indirect(0x100), &mut cpu).unwrap(), 0x3a52);
 
+        // Page wrapping bug for indirect
         cpu.bus.write(0xFF, 0x76).unwrap();
-        cpu.bus.write(0x100, 0x17).unwrap();
+        cpu.bus.write(0x00, 0x17).unwrap();
         assert_eq!(deref_address(Indirect(0xFF), &mut cpu).unwrap(), 0x1776);
     }
 }

@@ -10,9 +10,11 @@ use ines::parse::INesFile;
 
 use std::{env, fs, path::Path, error::Error};
 use cpu::cpu::Cpu;
-use graphics::NesEmuGraphics;
+use graphics::simple::SimpleGraphics;
+use graphics::graphics::NesGraphics;
 
 use crate::cart::builder::build_cartridge;
+use crate::graphics::debug::DebugGraphics;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -31,15 +33,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     
     cpu.reset()?;
+    // cpu.reg.pc = 0xC000;
 
-    let mut graphics = NesEmuGraphics::new(3);
+    // let mut graphics = SimpleGraphics::new(3);
+    let mut graphics = DebugGraphics::new(3);
 
     let mut running = true;
 
     const FPS: f64 = 62.0;
 
     let start_time = Instant::now();
-    let mut paused = false;
+    let mut paused = true;
 
     let mut num_frames = 0;
     // Main loop
@@ -56,13 +60,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Event::KeyDown { keycode: Some(Keycode::C), ..} => {
                     paused = true;
                     for _ in 0..3 {
-                        cpu.system_tick()?;
+                        cpu.system_tick(None)?;
                     }
-                    graphics.render_frame(cpu.debug_frame())?;
+                    graphics.render_frame(cpu.debug_frame(), &mut cpu)?;
                 }
-                Event::KeyDown { keycode: Some(Keycode::F), ..} => {
+                Event::KeyDown { keycode: Some(Keycode::F), ..} | Event::KeyDown { keycode: Some(Keycode::P), ..} => {
                     paused = true;
-                    graphics.render_frame(cpu.next_frame()?)?;
+                    graphics.render_frame(cpu.next_frame()?, &mut cpu)?;
                 },
                 Event::KeyDown { keycode: Some(Keycode::Space), ..} => {
                     paused = !paused;
@@ -72,7 +76,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         // Generate frame
         if !paused {
-            graphics.render_frame(cpu.next_frame()?)?;
+            graphics.render_frame(cpu.next_frame()?, &mut cpu)?;
             num_frames += 1;
             let curr_time = graphics.performance_counter()?;
 

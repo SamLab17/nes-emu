@@ -28,7 +28,7 @@ impl fmt::Display for AddressingMode {
             AbsoluteX(addr) => write!(f, "${:04X},X (AbsX)", addr),
             AbsoluteY(addr) => write!(f, "${:04X},Y (AbsY)", addr),
             Immediate(val) => write!(f, "#${:02X} (Imm)", val),
-            Implied => write!(f, "  (Imp)"),
+            Implied => write!(f, " (Imp)"),
             Indirect(addr) => write!(f, "(${:04X}) (Ind)", addr),
             XIndirect(offset) => write!(f, "(${:02X}, X) (XInd)", offset),
             IndirectY(offset) => write!(f, "(${:02X}), Y (IndY)", offset),
@@ -128,10 +128,10 @@ mod isa_tests {
     #[test]
     fn instr_display_test() {
         let i1 = Instr{op: ADC, mode: Absolute(0xCAFE)};
-        assert_eq!(format!("{}", i1), "ADC $CAFE".to_string());
+        assert_eq!(format!("{}", i1), "ADC $CAFE (Abs)".to_string());
 
         let i2 = Instr{op: JMP, mode: Indirect(0x1234)};
-        assert_eq!(format!("{}", i2), "JMP ($1234)".to_string());
+        assert_eq!(format!("{}", i2), "JMP ($1234) (Ind)".to_string());
 
         let i3 = Instr{op: ASL, mode: Accumulator};
         assert_eq!(format!("{}", i3), "ASL A".to_string());
