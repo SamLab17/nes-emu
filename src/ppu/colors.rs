@@ -6,13 +6,8 @@ use sdl2::pixels::Color;
 pub type ColorMap = HashMap<u8, Color>;
 
 const NUM_COLORS: u8 = 0x40;
-const DEFAULT_PALETTE_FILE: &'static str = "palette/ntsc.pal";
 
 static DEFAULT_PALETTE:  &'static [u8] = include_bytes!("../../palette/ntsc.pal");
-
-pub fn load_default_color_map() -> ColorMap {
-    load_color_map(None).unwrap()
-}
 
 pub fn load_color_map(pal_file: Option<&str>) -> Result<ColorMap> {
     let bytes = match pal_file {

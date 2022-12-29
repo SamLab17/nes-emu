@@ -1,10 +1,8 @@
-use bit::BitIndex;
-
-use super::cart::{ppu_inv_addr, ppu_rd_only, Cart, Cartridge};
+use super::cart::{ppu_inv_addr, Cart, Cartridge};
 
 use crate::error::Result;
 use crate::ines::parse::MirrorType;
-use crate::mem::device::{inv_addr, rd_only, MemoryDevice, MemoryError};
+use crate::mem::error::{inv_addr, rd_only, MemoryError};
 
 #[derive(Debug)]
 pub struct Nrom128 {
@@ -14,7 +12,37 @@ pub struct Nrom128 {
     mirroring: MirrorType,
 }
 
-impl MemoryDevice for Nrom128 {
+/*
+Nametable numbers:
+          |
+     00   |   01
+  -----------------
+     10  |   11
+         |
+
+Nametable Address:
+NNOO OOOO OOOO
+N = nametable number
+O = offset
+*/
+fn nametable_addr(mut addr: u16, mirror_type: MirrorType) -> u16 {
+    addr &= 0xFFF;
+    match mirror_type {
+        MirrorType::Vertical => match addr {
+            0x000..=0x3FF | 0x800..=0xBFF => addr & 0x3FF,
+            0x400..=0x7FF | 0xC00..=0xFFF => (addr & 0x3FF) | 0x400,
+            _ => panic!("impossible"),
+        },
+        MirrorType::Horizontal => match addr {
+            0x000..=0x7FF => addr & 0x3FF,
+            0x800..=0xFFF => (addr & 0x3FF) | 0x400,
+            _ => panic!("impossible"),
+        },
+    }
+}
+
+impl Cart for Nrom128 {
+
     fn name(&self) -> String {
         "NROM-128".into()
     }
@@ -34,31 +62,7 @@ impl MemoryDevice for Nrom128 {
             _ => Err(inv_addr(addr)),
         }
     }
-}
 
-/*
-Nametable numbers:
-          |
-     00   |   01
-  -----------------
-     10  |   11
-         |
-
-Nametable Address:
-NNOO OOOO OOOO
-N = nametable number
-O = offset
-*/
-fn nametable_addr(mut addr: u16, mirror_type: MirrorType) -> u16 {
-    addr &= 0xFFF;
-    // let nt_select = addr.bit_range(10..12);
-    match mirror_type {
-        MirrorType::Vertical => ((addr.bit(10) as u16) << 10) | (addr & 0x3FF),
-        MirrorType::Horizontal => ((addr.bit(11) as u16) << 10) | (addr & 0x3FF),
-    }
-}
-
-impl Cart for Nrom128 {
     fn ppu_read(&self, addr: u16, vram: &[u8]) -> Result<u8> {
         match addr {
             0x0000..=0x1FFF => Ok(self.chr_rom[addr as usize]),
@@ -83,11 +87,12 @@ pub struct Nrom256 {
     mirroring: MirrorType,
 }
 
-impl MemoryDevice for Nrom256 {
+impl Cart for Nrom256 {
+
     fn name(&self) -> String {
         "NROM-256".into()
     }
-
+    
     fn read(&mut self, addr: u16) -> Result<u8> {
         match addr {
             0x6000..=0x7FFF => Ok(self.prg_ram[((addr - 0x6000) as usize)]),
@@ -106,9 +111,6 @@ impl MemoryDevice for Nrom256 {
             _ => Err(inv_addr(addr)),
         }
     }
-}
-
-impl Cart for Nrom256 {
     fn ppu_read(&self, addr: u16, vram: &[u8]) -> Result<u8> {
         match addr {
             0x0000..=0x1FFF => Ok(self.chr_rom[addr as usize]),
@@ -202,20 +204,40 @@ mod nrom_tests {
 
     #[test]
     fn test_mirroring() {
-        assert_eq!(nametable_addr(0x2800, MirrorType::Vertical), 0x000);
-        assert_eq!(nametable_addr(0x2842, MirrorType::Vertical), 0x042);
-        assert_eq!(nametable_addr(0x2917, MirrorType::Vertical), 0x117);
+        for off in 0..0x400 {
+            assert_eq!(
+                nametable_addr(0x2400 + off, MirrorType::Horizontal),
+                0x000 + off
+            );
+            assert_eq!(
+                nametable_addr(0x2000 + off, MirrorType::Horizontal),
+                0x000 + off
+            );
+            assert_eq!(
+                nametable_addr(0x2C00 + off, MirrorType::Horizontal),
+                0x400 + off
+            );
+            assert_eq!(
+                nametable_addr(0x2800 + off, MirrorType::Horizontal),
+                0x400 + off
+            );
 
-        assert_eq!(nametable_addr(0x2C00, MirrorType::Vertical), 0x400);
-        assert_eq!(nametable_addr(0x2C42, MirrorType::Vertical), 0x442);
-        assert_eq!(nametable_addr(0x2D17, MirrorType::Vertical), 0x517);
-
-        assert_eq!(nametable_addr(0x2400, MirrorType::Horizontal), 0x000);
-        assert_eq!(nametable_addr(0x2442, MirrorType::Horizontal), 0x042);
-        assert_eq!(nametable_addr(0x2517, MirrorType::Horizontal), 0x117);
-
-        assert_eq!(nametable_addr(0x2C00, MirrorType::Horizontal), 0x400);
-        assert_eq!(nametable_addr(0x2C42, MirrorType::Horizontal), 0x442);
-        assert_eq!(nametable_addr(0x2D17, MirrorType::Horizontal), 0x517);
+            assert_eq!(
+                nametable_addr(0x2800 + off, MirrorType::Vertical),
+                0x000 + off
+            );
+            assert_eq!(
+                nametable_addr(0x2000 + off, MirrorType::Vertical),
+                0x000 + off
+            );
+            assert_eq!(
+                nametable_addr(0x2C00 + off, MirrorType::Vertical),
+                0x400 + off
+            );
+            assert_eq!(
+                nametable_addr(0x4C00 + off, MirrorType::Vertical),
+                0x400 + off
+            );
+        }
     }
 }

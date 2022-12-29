@@ -1,13 +1,13 @@
 use super::decode::fetch_instr;
-use super::exec::{exec_instr, push_stack_addr, push_stack};
+use super::exec::{exec_instr, push_stack, push_stack_addr};
 use super::isa::Instr;
 use super::reg::{Registers, StatusFlags};
 use crate::cart::cart::Cartridge;
 use crate::error::Result;
+use crate::mem::bus::MemoryBus;
 use crate::mem::bus::MemoryBusBuilder;
 use crate::mem::utils::make_address;
-use crate::mem::{bus::MemoryBus, device::MemoryDevice};
-use crate::ppu::ppu::{Frame};
+use crate::ppu::ppu::Frame;
 
 pub const STACK_OFFSET: u16 = 0x100;
 
@@ -29,7 +29,7 @@ impl Interrupt {
     pub fn num_cycles(&self) -> u16 {
         match self {
             Self::NonMaskable | Self::Reset => 8,
-            Self::Request => 7
+            Self::Request => 7,
         }
     }
 }
@@ -41,7 +41,7 @@ pub struct Cpu {
     pub bus: MemoryBus,
     pub interrupt: Option<Interrupt>,
     cycles_left: u16,
-    ticks_left : u8,
+    ticks_left: u8,
     log_cycles: u64,
 }
 
@@ -62,6 +62,7 @@ impl Cpu {
     }
 
     // CPU with only RAM for unit tests
+    #[allow(dead_code)]
     pub fn mock(init_ram: Option<&[u8]>) -> Self {
         Cpu {
             reg: Default::default(),
@@ -74,9 +75,8 @@ impl Cpu {
     }
 
     pub fn reset(&mut self) -> Result<()> {
-
         let isr = Interrupt::Reset.vector();
-        self.reg.pc = make_address(self.bus.read(isr)?, self.bus.read(isr+1)?);
+        self.reg.pc = make_address(self.bus.read(isr)?, self.bus.read(isr + 1)?);
 
         self.reg.a = 0;
         self.reg.x = 0;
@@ -88,7 +88,7 @@ impl Cpu {
         self.cycles_left = 7;
 
         self.bus.ppu.reset()?;
-        
+
         Ok(())
     }
 
@@ -110,11 +110,11 @@ impl Cpu {
                 // Jump to Interrupt Handler
                 // self.reg.pc = make_address(self.bus.read(isr_addr)?, self.bus.read(isr_addr + 1)?);
                 self.reg.pc = isr_addr;
-                
+
                 // Clear interrupt
                 self.interrupt = None;
 
-                return Ok(interrupt.num_cycles())
+                return Ok(interrupt.num_cycles());
             }
         }
         // Address of the instruction we're about to fetch (fetch_instr modifies self.reg.pc)
@@ -122,13 +122,16 @@ impl Cpu {
         // Decode and run the next instruction
         let (i, ncycles) = fetch_instr(self)?;
         // print!("{:X} {:<40} ", pc, format!("{}", i));
-        // println!("{}", self.reg); 
+        // println!("{}", self.reg);
         // print!(" {:3},{:3}", self.bus.ppu.scanline, self.bus.ppu.cycle);
         // println!(" CYC:{}", self.log_cycles);
         if let Some(log) = log {
-            log.push_str(&format!("{:04X} {:?} {} PPU:{:3},{:3} CYC:{}\n", pc, i.op, self.reg, self.bus.ppu.scanline, self.bus.ppu.cycle, self.log_cycles));
+            log.push_str(&format!(
+                "{:04X} {:?} {} PPU:{:3},{:3} CYC:{}\n",
+                pc, i.op, self.reg, self.bus.ppu.scanline, self.bus.ppu.cycle, self.log_cycles
+            ));
         };
-        
+
         match exec_instr(i, self) {
             Ok(extra_cycles) => Ok(ncycles + extra_cycles),
             Err(e) => {
@@ -148,11 +151,11 @@ impl Cpu {
         while let Ok((instr, _)) = fetch_instr(self) {
             if i >= offset {
                 self.reg.pc = restore_pc;
-                return Ok((prev_pc, instr))
+                return Ok((prev_pc, instr));
             }
             prev_pc = self.reg.pc;
             i += 1;
-        } 
+        }
         self.reg.pc = restore_pc;
         Err("no valid instructions left".into())
     }
@@ -162,7 +165,7 @@ impl Cpu {
         if self.cycles_left == 0 {
             self.cycles_left = self.run_next_instr(log)?;
         }
-        
+
         self.cycles_left -= 1;
         self.log_cycles += 1;
         Ok(())
@@ -172,9 +175,9 @@ impl Cpu {
         if self.ticks_left == 0 {
             self.cycle(log)?;
             self.ticks_left = NUM_TICKS_PER_CPU_CYCLE;
-        } 
+        }
         self.ticks_left -= 1;
-        
+
         let (frame, int) = self.bus.ppu.tick()?;
         self.interrupt = int;
 
@@ -196,7 +199,7 @@ impl Cpu {
 
 #[cfg(test)]
 mod cpu_test {
-    use crate::{cpu::cpu::Cpu, cart::{builder::build_cartridge}, ines::parse::INesFile};
+    use crate::{cart::builder::build_cartridge, cpu::cpu::Cpu, ines::parse::INesFile};
 
     static NESTEST: &'static [u8] = include_bytes!("../../roms/nestest.nes");
     static NESTEST_LOG: &'static str = include_str!("../../nestest-trimmed.log");
@@ -217,8 +220,14 @@ mod cpu_test {
             }
             cpu.system_tick(Some(&mut log)).unwrap();
         }
-        
 
-        assert_eq!(log.trim_end(), NESTEST_LOG.lines().take(N_INSTR).collect::<Vec<&str>>().join("\n"))
+        assert_eq!(
+            log.trim_end(),
+            NESTEST_LOG
+                .lines()
+                .take(N_INSTR)
+                .collect::<Vec<&str>>()
+                .join("\n")
+        )
     }
 }

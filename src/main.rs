@@ -8,24 +8,32 @@ mod graphics;
 
 use ines::parse::INesFile;
 
-use std::{env, fs, path::Path, error::Error};
+use std::{fs, path::Path, error::Error};
 use cpu::cpu::Cpu;
-use graphics::simple::SimpleGraphics;
-use graphics::graphics::NesGraphics;
-
 use crate::cart::builder::build_cartridge;
-use crate::graphics::debug::DebugGraphics;
+use crate::graphics::graphics::GraphicsBuilder;
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use std::time::Duration;
 use std::time::Instant;
 
+use clap::Parser;
+
+#[derive(Parser)]
+struct CliArgs {
+    rom_path: String,
+    #[arg(short, long)]
+    scale: Option<u32>,
+    #[arg(short, long)]
+    debug: bool
+}
+
 // #[funtime::timed]
 fn main() -> Result<(), Box<dyn Error>> {
-    let rom_path = env::args().nth(1).expect("No ROM file provided");
-    let rom = fs::read(Path::new(&rom_path))?;
+    let args = CliArgs::parse();
 
+    let rom = fs::read(Path::new(&args.rom_path))?;
     let ines_rom = INesFile::try_from(&rom).expect("Path provided is not a valid NES ROM.");
 
     let mut cpu = Cpu::new(
@@ -33,17 +41,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     
     cpu.reset()?;
-    // cpu.reg.pc = 0xC000;
 
     // let mut graphics = SimpleGraphics::new(3);
-    let mut graphics = DebugGraphics::new(3);
+    let mut graphics = GraphicsBuilder::new()
+    .debug(args.debug)
+    .scale(args.scale)
+    .build();
 
     let mut running = true;
 
     const FPS: f64 = 62.0;
 
     let start_time = Instant::now();
-    let mut paused = true;
+    let mut paused = false;
 
     let mut num_frames = 0;
     // Main loop

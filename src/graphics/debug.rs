@@ -5,7 +5,7 @@ use nes_emu::ppu::ppu::Frame;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
-use sdl2::rect::Rect;
+use sdl2::rect::{Rect, Point};
 use sdl2::render::{Canvas, Texture};
 use sdl2::surface::Surface;
 use sdl2::video::Window;
@@ -19,6 +19,7 @@ pub struct DebugGraphics {
     event_pump: EventPump,
     font_texture: Texture,
     character_rects: [Rect; 256],
+    show_nametable_boundaries: bool,
     iscale: u32,
     curr_palette: u8,
 }
@@ -38,6 +39,19 @@ impl NesGraphics for DebugGraphics {
                     self.iscale,
                     self.iscale,
                 ))?;
+            }
+        }
+
+        if self.show_nametable_boundaries {
+            self.canvas.set_draw_color(Color::RED);
+            let s = self.iscale as i32;
+            let w = Self::NES_WIDTH as i32;
+            let h = Self::NES_HEIGHT as i32;
+            for r in 0..30 {
+                self.canvas.draw_line(Point::new(0, r*8*s), Point::new(w * s, r * 8 * s))?;
+            }
+            for c in 0..32 {
+                self.canvas.draw_line(Point::new(c * 8 * s, 0), Point::new(c*8*s, h * s))?;
             }
         }
 
@@ -85,6 +99,9 @@ impl NesGraphics for DebugGraphics {
             match e {
                 Event::KeyDown { keycode: Some(Keycode::P), .. } => {
                     self.curr_palette = (self.curr_palette + 1) % 8;
+                },
+                Event::KeyDown { keycode: Some(Keycode::N), .. } => {
+                    self.show_nametable_boundaries = !self.show_nametable_boundaries;
                 }
                 _ => (),
             }
@@ -153,6 +170,7 @@ impl DebugGraphics {
             font_texture,
             character_rects,
             curr_palette: 0,
+            show_nametable_boundaries: false,
             iscale,
         }
     }

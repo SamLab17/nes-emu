@@ -34,7 +34,13 @@ rand = "0.8.5"
 strum = "0.24"
 strum_macros = "0.24"
 
+[dependencies.clap]
+version = "4.0.32"
+# default-features = false
+features = ["derive"]
+
 [dependencies.sdl2]
 version = "0.35.2"
 default-features = false
 features = ["unsafe_textures"]
+

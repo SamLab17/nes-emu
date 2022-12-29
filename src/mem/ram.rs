@@ -1,4 +1,4 @@
-use super::device::{MemoryDevice, MemoryError};
+use super::error::{MemoryError};
 use crate::error::Result;
 
 const RAM_SIZE: u16 = 0x800;
@@ -11,10 +11,6 @@ impl Default for Ram {
     fn default() -> Ram {
         Ram { mem: [0; RAM_SIZE as usize] }
     }
-}
-
-impl Ram {
-
 }
 
 impl Ram {

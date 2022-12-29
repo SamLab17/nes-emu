@@ -7,7 +7,7 @@ use strum::IntoEnumIterator;
 
 use crate::error::Result;
 
-use super::cpu::{Interrupt, STACK_OFFSET};
+use super::cpu::STACK_OFFSET;
 use super::utils::is_negative;
 use super::{
     deref::effective_addr,
@@ -16,7 +16,6 @@ use super::{
 };
 use crate::cpu::cpu::Cpu;
 use crate::mem::utils::{hi_byte, lo_byte, make_address, page_num};
-use crate::mem::device::{MemoryDevice, rd_only};
 
 use super::deref::{deref_address, deref_byte};
 
@@ -339,7 +338,7 @@ fn brk(_am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     push_stack(cpu, cpu.reg.status.bits())?;
 
     cpu.reg.pc = make_address(cpu.bus.read(0xFFFE)?, cpu.bus.read(0xFFFF)?);
-    
+
     Ok(0)
 }
 
@@ -393,7 +392,7 @@ fn dec(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
 }
 
 fn dex(_am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
-    cpu.reg.x  = cpu.reg.x.wrapping_sub(1);
+    cpu.reg.x = cpu.reg.x.wrapping_sub(1);
     set_negative_flag(cpu, cpu.reg.x);
     set_zero_flag(cpu, cpu.reg.x);
     Ok(0)
@@ -451,7 +450,7 @@ fn jmp(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
 }
 
 fn jsr(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
-    push_stack_addr(cpu, cpu.reg.pc-1)?;
+    push_stack_addr(cpu, cpu.reg.pc - 1)?;
     cpu.reg.pc = deref_address(am, cpu)?;
     Ok(0)
 }
@@ -790,7 +789,6 @@ fn tya(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
 mod exec_tests {
     use super::AddressingMode::*;
     use crate::cpu::cpu::Cpu;
-    use crate::mem::device::MemoryDevice;
 
     use super::cross_page_boundary;
 

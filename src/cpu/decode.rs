@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::{cpu::isa::AddressingMode, mem::device::MemoryDevice, mem::utils::make_address};
+use crate::{cpu::isa::AddressingMode, mem::utils::make_address};
 use std::{error::Error, fmt};
 
 #[derive(Debug, Clone)]
@@ -44,13 +44,7 @@ pub mod instr_lookup {
         ZpgY,
     }
 
-    use std::collections::HashMap;
-
-    use crate::cpu::isa::{
-        AddressingMode, Instr,
-        Opcode::{self, *},
-    };
-    use lazy_static::lazy_static;
+    use crate::cpu::isa::Opcode::{self, *};
     use Mode::*;
     type InstrTup = (Opcode, Mode, u8);
     const INV: InstrTup = (INVALID, Imp, 0);
@@ -74,38 +68,6 @@ pub mod instr_lookup {
         [(CPX, Imm, 2), (SBC, XInd, 6), INV, INV, (CPX, Zpg, 3),  (SBC, Zpg, 3),  (INC, Zpg, 5),  INV, (INX, Imp, 2), (SBC, Imm, 2),  (NOP, Imp, 2), INV, (CPX, Abs, 4), (SBC, Abs, 4), (INC, Abs, 6), INV],
         [(BEQ, Rel, 2), (SBC, IndY, 5), INV, INV, (NOP, ZpgX, 4), (SBC, ZpgX, 4), (INC, ZpgX, 6), INV, (SED, Imp, 2), (SBC, AbsY, 4), (NOP, Imp, 2), INV, (NOP, AbsX, 4), (SBC, AbsX, 4), (INC, AbsX, 7), INV],
     ];
-
-    // For looking up number of cycles
-    lazy_static! {
-        static ref CYCLE_LOOKUP: HashMap<(Opcode, Mode), u8> = {
-            let mut m = HashMap::new();
-            for row in LOOKUP.iter() {
-                for (op, mode, cycles) in row.iter() {
-                    m.insert((*op, *mode), *cycles);
-                }
-            }
-            m
-        };
-    }
-
-    fn address_mode_to_mode(am: AddressingMode) -> Mode {
-        use AddressingMode::*;
-        match am {
-            Accumulator => Acc,
-            Absolute(_) => Abs,
-            AbsoluteX(_) => AbsX,
-            AbsoluteY(_) => AbsY,
-            Immediate(_) => Imm,
-            Implied => Imp,
-            Indirect(_) => Ind,
-            XIndirect(_) => XInd,
-            IndirectY(_) => IndY,
-            Relative(_) => Rel,
-            ZeroPage(_) => Zpg,
-            ZeroPageX(_) => ZpgX,
-            ZeroPageY(_) => ZpgY,
-        }
-    }
 }
 
 // Reads byte at current PC, then advances PC
@@ -177,10 +139,10 @@ mod decode_tests {
 
     // Checks proper decode of instruction (get correct instruction, read correct # of bytes) and
     // and checks the # of cycles for the instruction
-    fn check_decode(binary: &[u8], op: Opcode, am: AddressingMode, n_cycles: u16) {
+    fn check_decode(binary: &[u8], op: Opcode, mode: AddressingMode, n_cycles: u16) {
         let mut cpu = Cpu::mock(Some(binary));
         cpu.reg.pc = 0;
-        let instr = Instr { op: op, mode: am };
+        let instr = Instr { op, mode };
 
         let (act_instr, act_n_cycles) = fetch_instr(&mut cpu).unwrap();
         assert_eq!(act_instr, instr);

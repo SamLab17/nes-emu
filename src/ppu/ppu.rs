@@ -1,17 +1,14 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-// use bit::BitIndex;
-// use bit::BitIndex;
 use bitfield::bitfield;
 
 use crate::cart::cart::Cartridge;
 use crate::cpu::cpu::Interrupt;
-use crate::mem::device::{inv_addr, rd_only, wr_only};
 use crate::error::Result;
+use crate::mem::error::{inv_addr, rd_only, wr_only};
 use crate::mem::ram::Ram;
 use sdl2::pixels::Color;
-
 
 use super::colors::{load_color_map, ColorMap};
 
@@ -74,7 +71,8 @@ bitfield! {
 }
 
 const NAMETABLE_OFFSET: u16 = 0x2000;
-const ATTRIBUTE_TABLE_OFFSET: u16 = 0x2C30;
+const ATTRIBUTE_TABLE_OFFSET: u16 = 0x23C0;
+const PALETTES_OFFSET: u16 = 0x3F00;
 
 #[derive(Default, Debug)]
 pub struct PpuReg {
@@ -86,7 +84,7 @@ pub struct PpuReg {
     ppu_scroll: u16,
     // Whether we're writing to the upper or lower byte of ppu_addr
     // aka "w" register
-    ppu_addr_latch : bool,
+    ppu_addr_latch: bool,
     ppu_data: u8,
     ppu_data_buffer: u8,
     oam_dma: u8,
@@ -96,30 +94,31 @@ pub struct PpuReg {
     fine_x: u8,
 }
 
-impl PpuReg {
-}
+impl PpuReg {}
 
 pub struct PpuBuilder {
     palette_file: Option<String>,
-    cart: Rc<RefCell<Cartridge>>
+    cart: Rc<RefCell<Cartridge>>,
 }
 
 impl PpuBuilder {
-
     pub fn new(cart: Rc<RefCell<Cartridge>>) -> Self {
-        PpuBuilder { palette_file: None, cart }
+        PpuBuilder {
+            palette_file: None,
+            cart,
+        }
     }
 
-    pub fn with_palette(mut self, pal_file: String) -> Self {
-        self.palette_file = Some(pal_file);
-        self
-    }
+    // pub fn with_palette(mut self, pal_file: String) -> Self {
+    //     self.palette_file = Some(pal_file);
+    //     self
+    // }
 
     pub fn build(self) -> Result<Ppu> {
         Ok(Ppu {
             color_map: load_color_map(self.palette_file.as_deref())?,
             cart: self.cart,
-            vram: [0u8; 1024*2],
+            vram: [0u8; 1024 * 2],
             oam: [0u8; 256],
             palettes: [0u8; 256],
             reg: PpuReg::default(),
@@ -128,7 +127,7 @@ impl PpuBuilder {
             scanline: 0,
             buffer: Box::new([[Color::BLACK; 256]; 240]),
             bg_tile_id: 0,
-            bg_attribute_id: 0,
+            bg_tile_attribute: 0,
             bg_tile_lsb: 0,
             bg_tile_msb: 0,
             bg_shift_pattern_lsb: 0,
@@ -154,7 +153,7 @@ pub struct Ppu {
     pub scanline: i32,
     // Background rendering intermediates
     bg_tile_id: u8,
-    bg_attribute_id: u8,
+    bg_tile_attribute: u8,
     bg_tile_lsb: u8,
     bg_tile_msb: u8,
     bg_shift_pattern_lsb: u16,
@@ -166,7 +165,7 @@ pub struct Ppu {
 impl Ppu {
     pub fn read(&mut self, addr: u16) -> Result<u8> {
         if addr < 0x2000 || (addr > 0x3FFF && addr != 0x4014) {
-            return Err(inv_addr(addr))
+            return Err(inv_addr(addr));
         } else if addr == 0x4014 {
             Err(wr_only(addr))
         } else {
@@ -176,12 +175,12 @@ impl Ppu {
                 1 => Err(wr_only(addr)),
                 2 => {
                     // Status register
-                   let ret = (self.reg.status.0 & 0xE0) | (self.reg.ppu_data_buffer & 0x1F);
-                   self.reg.status.set_vblank_start(false);
-                   self.reg.ppu_addr_latch = false;
-                //    println!("read status reg: {ret:X}");
-                   Ok(ret)
-                },
+                    let ret = (self.reg.status.0 & 0xE0) | (self.reg.ppu_data_buffer & 0x1F);
+                    self.reg.status.set_vblank_start(false);
+                    self.reg.ppu_addr_latch = false;
+                    //    println!("read status reg: {ret:X}");
+                    Ok(ret)
+                }
                 3 => Err(wr_only(addr)),
                 4 => Err(wr_only(addr)),
                 5 => Err(wr_only(addr)),
@@ -198,15 +197,15 @@ impl Ppu {
                         self.reg.v_addr.0 += 1
                     }
                     Ok(data)
-                },
-                _ => panic!("impossible")
+                }
+                _ => panic!("impossible"),
             }
         }
     }
 
     pub fn write(&mut self, addr: u16, byte: u8, cpu_ram: &Ram) -> Result<()> {
         if addr < 0x2000 || (addr > 0x3FFF && addr != 0x4014) {
-            return Err(inv_addr(addr))
+            return Err(inv_addr(addr));
         } else if addr == 0x4014 {
             // OAM DMA
             let start = (byte as u16) << 8;
@@ -219,18 +218,17 @@ impl Ppu {
             match addr & 0x7 {
                 0 => {
                     self.reg.control.0 = byte;
-                    self.reg.t_addr.set_nametable(self.reg.control.get_nametable_addr().into());
+                    self.reg
+                        .t_addr
+                        .set_nametable(self.reg.control.get_nametable_addr().into());
                     Ok(())
-                },
-                1 => {
-                    Ok(self.reg.mask.0 = byte)
-                },
+                }
+                1 => Ok(self.reg.mask.0 = byte),
                 2 => Err(rd_only(addr)),
                 3 => Ok(self.reg.oam_addr = byte),
                 4 => {
                     todo!("Increment oam_addr, and actually perform write?");
-                    Ok(self.reg.oam_data = byte)
-                },
+                }
                 5 => {
                     // Scroll register
                     if self.reg.ppu_addr_latch {
@@ -242,20 +240,21 @@ impl Ppu {
                     }
                     self.reg.ppu_addr_latch = !self.reg.ppu_addr_latch;
                     Ok(())
-                },
+                }
                 6 => {
                     if self.reg.ppu_addr_latch {
                         // set lower byte
-                        self.reg.t_addr.0 = (self.reg.t_addr.0 & 0xFF00) | (byte as u16);
+                        set_low_byte(&mut self.reg.t_addr.0, byte);
                         self.reg.v_addr.0 = self.reg.t_addr.0;
                     } else {
                         // set high byte
-                        self.reg.t_addr.0 = (self.reg.t_addr.0 & 0x00FF) | (((byte as u16) & 0x3F) << 8);
+                        self.reg.t_addr.0 =
+                            (self.reg.t_addr.0 & 0x00FF) | (((byte as u16) & 0x3F) << 8);
                     }
                     self.reg.ppu_addr_latch = !self.reg.ppu_addr_latch;
-                    
+
                     Ok(())
-                },
+                }
                 7 => {
                     let ret = self.ppu_write(self.reg.v_addr.0, byte);
                     if self.reg.control.get_vram_inc() {
@@ -264,25 +263,43 @@ impl Ppu {
                         self.reg.v_addr.0 += 1
                     }
                     ret
-                },
-                _ => panic!("impossible")
+                }
+                _ => panic!("impossible"),
             }
         }
+    }
+
+    fn map_palette_addr(&self, addr: u16) -> usize {
+        let a = match addr {
+            0x3F10 => 0x3F00,
+            0x3F14 => 0x3F04,
+            0x3F18 => 0x3F08,
+            0x3F1C => 0x3F0C,
+            _ => addr,
+        } & 0x1F;
+        (if self.reg.mask.get_greyscale() {
+            a & 0x30
+        } else {
+            a & 0x3F
+        }) as usize
     }
 
     fn ppu_read(&self, addr: u16) -> Result<u8> {
         match addr {
             0x0000..=0x3EFF => self.cart.borrow_mut().ppu_read(addr, &self.vram),
-            0x3F00..=0x3FFF => Ok(self.palettes[(addr & 0x1F) as usize]),
-            _ => Err(inv_addr(addr))
+            0x3F00..=0x3FFF => Ok(self.palettes[self.map_palette_addr(addr)]),
+            _ => Err(inv_addr(addr)),
         }
     }
 
     fn ppu_write(&mut self, addr: u16, byte: u8) -> Result<()> {
         match addr {
             0x0000..=0x3EFF => self.cart.borrow_mut().ppu_write(addr, byte, &mut self.vram),
-            0x3F00..=0x3FFF => { self.palettes[(addr & 0x1F) as usize] = byte; Ok(()) }
-            _ => Err(inv_addr(addr))
+            0x3F00..=0x3FFF => {
+                self.palettes[self.map_palette_addr(addr)] = byte;
+                Ok(())
+            }
+            _ => Err(inv_addr(addr)),
         }
     }
 
@@ -294,6 +311,17 @@ impl Ppu {
         self.reg.t_addr.0 = 0;
         self.reg.ppu_data = 0;
         self.odd_frame = false;
+        self.cycle = 0;
+        self.scanline = 0;
+        self.reg.ppu_addr_latch = false;
+        self.reg.ppu_data_buffer = 0;
+        self.bg_tile_id = 0;
+        self.bg_tile_lsb = 0;
+        self.bg_tile_msb = 0;
+        self.bg_shift_attribute_lsb = 0;
+        self.bg_shift_attribute_msb = 0;
+        self.bg_shift_pattern_lsb = 0;
+        self.bg_shift_pattern_msb = 0;
         Ok(())
     }
 
@@ -304,7 +332,7 @@ impl Ppu {
         if self.scanline >= -1 && self.scanline < 240 {
             if self.scanline == 0 && self.cycle == 0 {
                 self.cycle = 1;
-                return Ok((None, None))
+                return Ok((None, None));
             }
             if self.scanline == -1 && self.cycle == 1 {
                 self.reg.status.set_vblank_start(false);
@@ -313,39 +341,58 @@ impl Ppu {
                 self.update_bg_shift();
                 self.load_bg()?;
             }
-        }
-
-        if (241..261).contains(&self.scanline) {
-            // Inside of vblank period
-            if self.scanline == 241 && self.cycle == 1 {
-                self.reg.status.set_vblank_start(true);
-                if self.reg.control.get_nmi_toggle() {
-                    ret_int = Some(Interrupt::NonMaskable);
+            match self.cycle {
+                256 => {
+                    // End of scanline
+                    self.inc_y();
                 }
+                257 => {
+                    // Reset X
+                    self.load_bg_shift();
+                    self.copy_x();
+                }
+                280..=304 if self.scanline == -1 => {
+                    self.copy_y();
+                }
+                338 | 340 => {
+                    self.bg_tile_id = self
+                        .ppu_read(NAMETABLE_OFFSET | self.reg.v_addr.get_nametable_lookup_addr())?;
+                }
+                _ => (),
             }
         }
 
-        let mut palette = 0;
-        let mut pixel = 0;
+        // if (241..261).contains(&self.scanline) {
+        // Start of vblank period
+        if self.scanline == 241 && self.cycle == 1 {
+            self.reg.status.set_vblank_start(true);
+            if self.reg.control.get_nmi_toggle() {
+                ret_int = Some(Interrupt::NonMaskable);
+            }
+        }
+        // }
+
+        let mut color = Color::BLACK;
         if self.reg.mask.get_show_bg() {
             use bit::BitIndex;
-            let bit_pos = 15 - self.reg.fine_x as usize;
+            let bit_pos = 15 - (self.reg.fine_x as usize);
             let pixel0 = self.bg_shift_pattern_lsb.bit(bit_pos) as u8;
             let pixel1 = self.bg_shift_pattern_msb.bit(bit_pos) as u8;
-            pixel = (pixel1 << 1) | pixel0;
+            let pixel = (pixel1 << 1) | pixel0;
 
             let pal0 = self.bg_shift_attribute_lsb.bit(bit_pos) as u8;
             let pal1 = self.bg_shift_attribute_msb.bit(bit_pos) as u8;
-            palette = (pal1 << 1) | pal0;
-
-            // println!("frame[{row}][{col}] = {color:?}");
+            let palette = (pal1 << 1) | pal0;
+            color = self.get_color(palette, pixel, true)?;
+            // println!("{palette:?} {pixel:?} {color:?}");
         }
 
-        let row = self.scanline as usize;
-        let col = (self.cycle - 1) as usize;
-        let color = self.get_color(palette, pixel, true);
-        if row < self.buffer.len() && col < self.buffer[row].len() {
-            self.buffer[row][col] = color;
+        if self.cycle > 0 {
+            let row = self.scanline as usize;
+            let col = (self.cycle - 1) as usize;
+            if row < self.buffer.len() && col < self.buffer[row].len() {
+                self.buffer[row][col] = color;
+            }
         }
 
         self.cycle += 1;
@@ -373,7 +420,9 @@ impl Ppu {
             self.reg.v_addr.set_coarse_x((cx + 1) % 32);
             if self.reg.v_addr.get_coarse_x() == 0 {
                 // Wrapped around, go to next nametable
-                self.reg.v_addr.set_nametable_x(!self.reg.v_addr.get_nametable_x());
+                self.reg
+                    .v_addr
+                    .set_nametable_x(!self.reg.v_addr.get_nametable_x());
             }
         }
     }
@@ -386,17 +435,23 @@ impl Ppu {
             if self.reg.v_addr.get_fine_y() == 0 {
                 self.reg.v_addr.set_coarse_y((cy + 1) % 30);
                 if self.reg.v_addr.get_coarse_y() == 0 {
-                    self.reg.v_addr.set_nametable_y(!self.reg.v_addr.get_nametable_y());
+                    self.reg
+                        .v_addr
+                        .set_nametable_y(!self.reg.v_addr.get_nametable_y());
                 }
             }
+            // Clamp coarse_y just in case
+            self.reg
+                .v_addr
+                .set_coarse_y(self.reg.v_addr.get_coarse_y().min(29));
         }
-        // Clamp coarse_y just in case
-        self.reg.v_addr.set_coarse_y(self.reg.v_addr.get_coarse_y().min(30));
     }
 
     fn copy_x(&mut self) {
         if self.rendering_enabled() {
-            self.reg.v_addr.set_nametable_x(self.reg.t_addr.get_nametable_x());
+            self.reg
+                .v_addr
+                .set_nametable_x(self.reg.t_addr.get_nametable_x());
             self.reg.v_addr.set_coarse_x(self.reg.t_addr.get_coarse_x());
         }
     }
@@ -404,20 +459,22 @@ impl Ppu {
     fn copy_y(&mut self) {
         if self.rendering_enabled() {
             self.reg.v_addr.set_fine_y(self.reg.t_addr.get_fine_y());
-            self.reg.v_addr.set_nametable_y(self.reg.t_addr.get_nametable_y());
+            self.reg
+                .v_addr
+                .set_nametable_y(self.reg.t_addr.get_nametable_y());
             self.reg.v_addr.set_coarse_y(self.reg.t_addr.get_coarse_y());
         }
     }
 
     fn load_bg_shift(&mut self) {
         set_low_byte(&mut self.bg_shift_pattern_lsb, self.bg_tile_lsb);
-        set_low_byte(&mut self.bg_shift_attribute_msb, self.bg_tile_msb);
-        let attr_lo = if self.bg_attribute_id & 0b1 != 0 {
+        set_low_byte(&mut self.bg_shift_pattern_msb, self.bg_tile_msb);
+        let attr_lo = if self.bg_tile_attribute & 0b1 != 0 {
             0xFF
         } else {
             0
         };
-        let attr_hi = if self.bg_attribute_id & 0b10 != 0 {
+        let attr_hi = if self.bg_tile_attribute & 0b10 != 0 {
             0xFF
         } else {
             0
@@ -447,109 +504,107 @@ impl Ppu {
             1 | 3 | 5 => (),
             0 => {
                 self.load_bg_shift();
-                // load nametable id
+                // load nametable entry
                 self.bg_tile_id = self.ppu_read(self.reg.v_addr.get_nametable_lookup_addr() | NAMETABLE_OFFSET)?;
-            },
+            }
             2 => {
                 // Attribute Address:
                 // 01NN1111YYYXXX
                 // X, Y are the top 3 bits of the coarse_x and coarse_y V addr registers
 
-                // load attribute
-                self.bg_attribute_id = self.ppu_read(
-                    ATTRIBUTE_TABLE_OFFSET | 
+                // load attribute for tile
+                self.bg_tile_attribute = self.ppu_read(
+                    ATTRIBUTE_TABLE_OFFSET |
                     (self.reg.v_addr.0 & 0xC00) | // Get nametable select
                     (self.reg.v_addr.get_coarse_x() >> 2) |
                     ((self.reg.v_addr.get_coarse_y() >> 2) << 3)
                 )?;
-
                 // Byte from attribute table consists of four pairs of two bits
                 if self.reg.v_addr.get_coarse_y() & 0b10 != 0 {
                     // We're in the top of the quadrant
-                    self.bg_attribute_id >>= 4;
+                    self.bg_tile_attribute >>= 4;
                 }
                 if self.reg.v_addr.get_coarse_x() & 0b10 != 0 {
                     // We're in the right of the quadrant
-                    self.bg_attribute_id >>= 2;
+                    self.bg_tile_attribute >>= 2;
                 }
                 // We only care about the bottom two bits
-                self.bg_attribute_id |= 0b11;
-            },
+                self.bg_tile_attribute &= 0b11;
+            }
             4 => {
-                // load lsb
+                // load lsb of tile data
                 self.bg_tile_lsb = self.ppu_read(
                     pattern_table_addr
                     + ((self.bg_tile_id as u16) << 4)
                     + self.reg.v_addr.get_fine_y()
                 )?;
-            },
+            }
             6 => {
-                // load msb
+                // load msb of tile data
                 self.bg_tile_msb = self.ppu_read(
                     pattern_table_addr
-                    + ((self.bg_tile_id as u16) << 4)
-                    + (self.reg.v_addr.get_fine_y() + 8)
+                        + ((self.bg_tile_id as u16) << 4)
+                        + self.reg.v_addr.get_fine_y()
+                        + 8,
                 )?;
-            },
+            }
             7 => {
                 // update registers
                 self.inc_x();
             }
-            _ => panic!("impossible")
+            _ => panic!("impossible"),
         }
 
-        match self.cycle {
-            256 => {
-                // End of scanline
-                self.inc_y();
-            },
-            257 => {
-                // Reset X
-                self.load_bg_shift();
-                self.copy_x();
-            },
-            338 | 340 => {
-                self.bg_tile_id = self.ppu_read(NAMETABLE_OFFSET | self.reg.v_addr.get_nametable_lookup_addr())?;
-            }
-            _ => ()
-        }
-
-        if self.scanline == -1 && self.cycle >= 280 && self.cycle < 305 {
-            self.copy_y();
-        }
         Ok(())
     }
 
-    fn get_color(&mut self, mut palette_idx: u8, mut pixel: u8, bg: bool) -> Color {
+    fn get_color(&mut self, mut palette_idx: u8, mut pixel: u8, bg: bool) -> Result<Color> {
         // (pixel is an index into the palette)
         palette_idx &= 0b11;
         pixel &= 0b11;
-        let bg_select = bg as u8;
+        if pixel == 0 {
+            palette_idx = 0;
+        }
+        let bg_select = !bg as u8;
         let idx = (bg_select << 4) | (palette_idx << 2) | pixel;
-        let color = self.palettes[idx as usize];
+        let addr = PALETTES_OFFSET | (idx as u16);
+        let color = self.ppu_read(addr)?;
         match self.color_map.get(&color) {
-            Some(c) => *c,
-            None => panic!("Invalid color {:X}", color)
+            Some(c) => Ok(*c),
+            None => Err("Invalid color".into()),
         }
     }
 
     // returns the 4 background and 4 foreground palettes
     pub fn debug_palettes(&mut self) -> Vec<Vec<Color>> {
-        let mut background: Vec<Vec<Color>> = (0..4).map(|palette| {
-            (0..4).map(|pixel| {
-                self.get_color(palette, pixel, true)
-            }).collect()
-        }).collect();
-        let foreground: Vec<Vec<Color>> = (0..4).map(|palette| {
-            (0..4).map(|pixel| {
-                self.get_color(palette, pixel, false)
-            }).collect()
-        }).collect();
+        let mut background: Vec<Vec<Color>> = (0..4)
+            .map(|palette| {
+                (0..4)
+                    .map(|pixel| self.get_color(palette, pixel, true).unwrap_or(Color::BLACK))
+                    .collect()
+            })
+            .collect();
+
+        let foreground: Vec<Vec<Color>> = (0..4)
+            .map(|palette| {
+                (0..4)
+                    .map(|pixel| {
+                        self.get_color(palette, pixel, false)
+                            .unwrap_or(Color::BLACK)
+                    })
+                    .collect()
+            })
+            .collect();
+
         background.extend(foreground.into_iter());
         background
     }
 
-    pub fn debug_pattern_tables(&mut self, palette: u8, bg: bool) -> Result<(PatternTable, PatternTable)> {
+    pub fn debug_pattern_tables(
+        &mut self,
+        palette: u8,
+        bg: bool,
+    ) -> Result<(PatternTable, PatternTable)> {
         use bit::BitIndex;
         let mut pat0: PatternTable = Box::new([[Color::BLACK; 128]; 128]);
         let mut pat1: PatternTable = Box::new([[Color::BLACK; 128]; 128]);
@@ -569,17 +624,20 @@ impl Ppu {
                 let lo1 = self.ppu_read(lo_plane1_addr + row)?;
                 let hi1 = self.ppu_read(hi_plane1_addr + row)?;
                 for col in 0..8u16 {
-                    let pixel0 = ((hi0.bit(7- col as usize) as u8) << 1) | lo0.bit(7- col as usize) as u8;
-                    pat0[(tile_y + row) as usize][(tile_x + col) as usize] = self.get_color(palette, pixel0, bg);
-                    let pixel1 = ((hi1.bit(7 - col as usize) as u8) << 1) | lo1.bit(7- col as usize) as u8;
-                    pat1[(tile_y + row) as usize][(tile_x + col) as usize] = self.get_color(palette, pixel1, bg);
+                    let pixel0 =
+                        ((hi0.bit(7 - col as usize) as u8) << 1) | lo0.bit(7 - col as usize) as u8;
+                    pat0[(tile_y + row) as usize][(tile_x + col) as usize] =
+                        self.get_color(palette, pixel0, bg)?;
+                    let pixel1 =
+                        ((hi1.bit(7 - col as usize) as u8) << 1) | lo1.bit(7 - col as usize) as u8;
+                    pat1[(tile_y + row) as usize][(tile_x + col) as usize] =
+                        self.get_color(palette, pixel1, bg)?;
                 }
             }
         }
         Ok((pat0, pat1))
     }
 }
-
 
 #[cfg(test)]
 mod ppu_test {
@@ -610,7 +668,7 @@ mod ppu_test {
         assert_eq!(c.get_nametable_addr(), 0b01);
         c = ControlReg(c.0 | 0b11);
         assert_eq!(c.get_nametable_addr(), 0b11);
-        
+
         // Can we overwrite nearby fields? No
         c.set_nametable_addr(0xFF);
         assert_eq!(c.get_sprite_size(), false);
@@ -634,5 +692,7 @@ mod ppu_test {
         a.0 = 0;
         assert_eq!(a.0, 0);
         assert_eq!(a.get_fine_y(), 0);
+        a.0 = 0xFFFF;
+        assert_eq!(a.get_nametable_lookup_addr(), a.0 & 0x0FFF);
     }
 }
