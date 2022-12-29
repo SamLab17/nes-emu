@@ -3,6 +3,7 @@ use super::exec::{exec_instr, push_stack, push_stack_addr};
 use super::isa::Instr;
 use super::reg::{Registers, StatusFlags};
 use crate::cart::cart::Cartridge;
+use crate::controller::ControllerRef;
 use crate::error::Result;
 use crate::mem::bus::MemoryBus;
 use crate::mem::bus::MemoryBusBuilder;
@@ -46,14 +47,14 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    pub fn new(cart: Cartridge) -> Self {
+    pub fn new(cart: Cartridge, controller1: Option<ControllerRef>, controller2: Option<ControllerRef>) -> Self {
         Self {
             reg: Registers {
                 pc: 0x34,
                 sp: 0xFD,
                 ..Registers::default()
             },
-            bus: MemoryBusBuilder::new().with_cart(cart).build(),
+            bus: MemoryBusBuilder::new().with_cart(cart).with_controllers(controller1, controller2).build(),
             interrupt: Some(Interrupt::Reset),
             cycles_left: 0,
             ticks_left: 0,
@@ -207,7 +208,7 @@ mod cpu_test {
     #[test]
     fn nestest() {
         let rom = INesFile::try_from(&NESTEST.to_vec()).unwrap();
-        let mut cpu = Cpu::new(build_cartridge(&rom).unwrap());
+        let mut cpu = Cpu::new(build_cartridge(&rom).unwrap(), None, None);
         cpu.reset().unwrap();
         cpu.reg.pc = 0xC000;
 
