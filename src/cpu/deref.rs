@@ -11,13 +11,13 @@ pub fn effective_addr(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
         AbsoluteX(addr) => Ok(addr + cpu.reg.x as u16),
         AbsoluteY(addr) => Ok(addr.wrapping_add(cpu.reg.y as u16)),
         XIndirect(offset) => {
-            let lo = cpu.bus.read((offset.wrapping_add(cpu.reg.x) & 0xFF) as u16)?;
-            let hi = cpu.bus.read((offset.wrapping_add(cpu.reg.x).wrapping_add(1) & 0xFF) as u16)?;
+            let lo = cpu.read((offset.wrapping_add(cpu.reg.x) & 0xFF) as u16)?;
+            let hi = cpu.read((offset.wrapping_add(cpu.reg.x).wrapping_add(1) & 0xFF) as u16)?;
             Ok(make_address(lo, hi))
         }
         IndirectY(offset) => {
-            let lo = cpu.bus.read(offset as u16)?;
-            let hi = cpu.bus.read((offset.wrapping_add(1)) as u16)?;
+            let lo = cpu.read(offset as u16)?;
+            let hi = cpu.read((offset.wrapping_add(1)) as u16)?;
             Ok(make_address(lo, hi).wrapping_add(cpu.reg.y as u16))
         }
         ZeroPage(offset) => Ok(offset as u16),
@@ -39,7 +39,7 @@ pub fn deref_byte(am: AddressingMode, cpu: &mut Cpu) -> Result<u8> {
         }
         _ => {
             let addr = effective_addr(am, cpu)?;
-            cpu.bus.read(addr)
+            cpu.read(addr)
         },
     }
 }
@@ -50,12 +50,12 @@ pub fn deref_address(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
         Indirect(addr) => {
             if addr & 0xFF == 0xFF {
                 // Simulate hardware bug when crossing pages
-                let lo = cpu.bus.read(addr)?;
-                let hi = cpu.bus.read(addr & 0xFF00)?;
+                let lo = cpu.read(addr)?;
+                let hi = cpu.read(addr & 0xFF00)?;
                 Ok(make_address(lo, hi))
             } else {
-                let lo = cpu.bus.read(addr)?;
-                let hi = cpu.bus.read(addr + 1)?;
+                let lo = cpu.read(addr)?;
+                let hi = cpu.read(addr + 1)?;
                 Ok(make_address(lo, hi))
             }
         }
@@ -100,12 +100,12 @@ mod addressing_mode_tests {
     fn absolute_x_index() {
         let mut cpu = Cpu::mock(None);
         // no carry
-        cpu.bus.write(0x08F7, 0x42).unwrap();
+        cpu.write(0x08F7, 0x42).unwrap();
         cpu.reg.x = 0x7;
         assert_eq!(deref_byte(AbsoluteX(0x08F0), &mut cpu).unwrap(), 0x42);
 
         // carry
-        cpu.bus.write(0x0200, 0x17).unwrap();
+        cpu.write(0x0200, 0x17).unwrap();
         cpu.reg.x = 0xFF;
         assert_eq!(deref_byte(AbsoluteX(0x101), &mut cpu).unwrap(), 0x17);
     }
@@ -114,12 +114,12 @@ mod addressing_mode_tests {
     fn absolute_y_index() {
         let mut cpu = Cpu::mock(None);
         // no carry
-        cpu.bus.write(0x08F7, 0x42).unwrap();
+        cpu.write(0x08F7, 0x42).unwrap();
         cpu.reg.y = 0x7;
         assert_eq!(deref_byte(AbsoluteY(0x08F0), &mut cpu).unwrap(), 0x42);
 
         // carry
-        cpu.bus.write(0x0200, 0x17).unwrap();
+        cpu.write(0x0200, 0x17).unwrap();
         cpu.reg.y = 0xFF;
         assert_eq!(deref_byte(AbsoluteY(0x101), &mut cpu).unwrap(), 0x17);
     }
@@ -136,9 +136,9 @@ mod addressing_mode_tests {
     fn x_indirect() {
         let mut cpu = Cpu::mock(None);
         cpu.reg.x = 0x04;
-        cpu.bus.write(0x0024, 0x74).unwrap();
-        cpu.bus.write(0x0025, 0x01).unwrap();
-        cpu.bus.write(0x0174, 0x42).unwrap();
+        cpu.write(0x0024, 0x74).unwrap();
+        cpu.write(0x0025, 0x01).unwrap();
+        cpu.write(0x0174, 0x42).unwrap();
         assert_eq!(deref_byte(XIndirect(0x20), &mut cpu).unwrap(), 0x42);
     }
 
@@ -146,19 +146,19 @@ mod addressing_mode_tests {
     fn indirect_y() {
         let mut cpu = Cpu::mock(None);
         cpu.reg.y = 0x10;
-        cpu.bus.write(0x74, 0x28).unwrap();
-        cpu.bus.write(0x75, 0x01).unwrap();
-        cpu.bus.write(0x0138, 0x42).unwrap();
+        cpu.write(0x74, 0x28).unwrap();
+        cpu.write(0x75, 0x01).unwrap();
+        cpu.write(0x0138, 0x42).unwrap();
         assert_eq!(deref_byte(IndirectY(0x74), &mut cpu).unwrap(), 0x42);
     }
 
     #[test]
     fn zero_page() {
         let mut cpu = Cpu::mock(None);
-        cpu.bus.write(0x00, 0xAB).unwrap();
-        cpu.bus.write(0x22, 0xCD).unwrap();
-        cpu.bus.write(0x33, 0xEF).unwrap();
-        cpu.bus.write(0xFF, 0x77).unwrap();
+        cpu.write(0x00, 0xAB).unwrap();
+        cpu.write(0x22, 0xCD).unwrap();
+        cpu.write(0x33, 0xEF).unwrap();
+        cpu.write(0xFF, 0x77).unwrap();
         assert_eq!(deref_byte(ZeroPage(0x00), &mut cpu).unwrap(), 0xAB);
         assert_eq!(deref_byte(ZeroPage(0x22), &mut cpu).unwrap(), 0xCD);
         assert_eq!(deref_byte(ZeroPage(0x33), &mut cpu).unwrap(), 0xEF);
@@ -168,7 +168,7 @@ mod addressing_mode_tests {
     #[test]
     fn zero_page_x() {
         let mut cpu = Cpu::mock(None);
-        cpu.bus.write(0x20, 0x42).unwrap();
+        cpu.write(0x20, 0x42).unwrap();
         cpu.reg.x = 0x60;
 
         // carry ignored
@@ -183,7 +183,7 @@ mod addressing_mode_tests {
     #[test]
     fn zero_page_y() {
         let mut cpu = Cpu::mock(None);
-        cpu.bus.write(0x20, 0x42).unwrap();
+        cpu.write(0x20, 0x42).unwrap();
         cpu.reg.y = 0x60;
 
         // carry ignored
@@ -230,13 +230,13 @@ mod addressing_mode_tests {
     #[test]
     fn indirect() {
         let mut cpu = Cpu::mock(None);
-        cpu.bus.write(0x100, 0x52).unwrap();
-        cpu.bus.write(0x101, 0x3a).unwrap();
+        cpu.write(0x100, 0x52).unwrap();
+        cpu.write(0x101, 0x3a).unwrap();
         assert_eq!(deref_address(Indirect(0x100), &mut cpu).unwrap(), 0x3a52);
 
         // Page wrapping bug for indirect
-        cpu.bus.write(0xFF, 0x76).unwrap();
-        cpu.bus.write(0x00, 0x17).unwrap();
+        cpu.write(0xFF, 0x76).unwrap();
+        cpu.write(0x00, 0x17).unwrap();
         assert_eq!(deref_address(Indirect(0xFF), &mut cpu).unwrap(), 0x1776);
     }
 }

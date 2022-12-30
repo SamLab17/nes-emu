@@ -7,7 +7,6 @@ use crate::cart::cart::Cartridge;
 use crate::cpu::cpu::Interrupt;
 use crate::error::Result;
 use crate::mem::error::{inv_addr, rd_only, wr_only};
-use crate::mem::ram::Ram;
 use sdl2::pixels::Color;
 
 use super::colors::{load_color_map, ColorMap};
@@ -94,7 +93,37 @@ pub struct PpuReg {
     fine_x: u8,
 }
 
-impl PpuReg {}
+#[derive(Default, Debug)]
+struct BackgroundState {
+    tile_id: u8,
+    tile_attribute: u8,
+    tile_lsb: u8,
+    tile_msb: u8,
+    shift_pattern_lsb: u16,
+    shift_pattern_msb: u16,
+    shift_attribute_lsb: u16,
+    shift_attribute_msb: u16,
+}
+
+bitfield! {
+    #[derive(Debug, Default, Clone, Copy)]
+    struct SpriteAttributes(u8);
+    u8;
+    get_palette, _: 1, 0;
+    get_priority, _: 5;
+    get_flip_horizontal, _ : 6;
+    get_flip_vertical, _ : 7;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OamSprite {
+    y: u8,
+    id: u8,
+    attributes: SpriteAttributes,
+    x: u8
+}
+
+// impl PpuReg {}
 
 pub struct PpuBuilder {
     palette_file: Option<String>,
@@ -126,14 +155,7 @@ impl PpuBuilder {
             cycle: 0,
             scanline: 0,
             buffer: Box::new([[Color::BLACK; 256]; 240]),
-            bg_tile_id: 0,
-            bg_tile_attribute: 0,
-            bg_tile_lsb: 0,
-            bg_tile_msb: 0,
-            bg_shift_pattern_lsb: 0,
-            bg_shift_pattern_msb: 0,
-            bg_shift_attribute_lsb: 0,
-            bg_shift_attribute_msb: 0,
+            bg: BackgroundState::default()
             // buffer: [[Color::BLACK; 256]; 240]
         })
     }
@@ -152,22 +174,13 @@ pub struct Ppu {
     pub cycle: u64,
     pub scanline: i32,
     // Background rendering intermediates
-    bg_tile_id: u8,
-    bg_tile_attribute: u8,
-    bg_tile_lsb: u8,
-    bg_tile_msb: u8,
-    bg_shift_pattern_lsb: u16,
-    bg_shift_pattern_msb: u16,
-    bg_shift_attribute_lsb: u16,
-    bg_shift_attribute_msb: u16,
+   bg: BackgroundState
 }
 
 impl Ppu {
     pub fn read(&mut self, addr: u16) -> Result<u8> {
-        if addr < 0x2000 || (addr > 0x3FFF && addr != 0x4014) {
+        if addr < 0x2000 || addr > 0x3FFF {
             return Err(inv_addr(addr));
-        } else if addr == 0x4014 {
-            Err(wr_only(addr))
         } else {
             assert!(addr >= 0x2000 && addr <= 0x3FFF);
             match addr & 0x7 {
@@ -182,7 +195,7 @@ impl Ppu {
                     Ok(ret)
                 }
                 3 => Err(wr_only(addr)),
-                4 => Err(wr_only(addr)),
+                4 => Ok(self.oam[self.reg.oam_addr as usize]),
                 5 => Err(wr_only(addr)),
                 6 => Err(wr_only(addr)),
                 7 => {
@@ -203,18 +216,10 @@ impl Ppu {
         }
     }
 
-    pub fn write(&mut self, addr: u16, byte: u8, cpu_ram: &Ram) -> Result<()> {
-        if addr < 0x2000 || (addr > 0x3FFF && addr != 0x4014) {
+    pub fn write(&mut self, addr: u16, byte: u8) -> Result<()> {
+        if addr < 0x2000 || addr > 0x3FFF {
             return Err(inv_addr(addr));
-        } else if addr == 0x4014 {
-            // OAM DMA
-            let start = (byte as u16) << 8;
-            for offset in 0u16..=0xFF {
-                self.oam[offset as usize] = cpu_ram.read(start | offset)?;
-            }
-            Ok(())
         } else {
-            assert!(addr >= 0x2000 && addr <= 0x3FFF);
             match addr & 0x7 {
                 0 => {
                     self.reg.control.0 = byte;
@@ -269,6 +274,28 @@ impl Ppu {
         }
     }
 
+    // Write a single byte into OAM memory
+    pub fn oam_write(&mut self, offset: u8, data: u8) {
+        self.oam[offset as usize] = data;
+        if offset % 4 == 2 {
+            // 3 middle bytes of byte 2 of a sprite should always read back as 0
+            self.oam[offset as usize] &= 0xE3;
+        }
+    }
+
+    // Read a sprite (4 bytes) from OAM memory
+    fn oam_read(&self, index: u8) -> OamSprite {
+        assert!((index as usize) < self.oam.len() / 4);
+
+        let off = (index as usize) << 2;
+        OamSprite {
+            y: self.oam[off], 
+            id: self.oam[off + 1], 
+            attributes: SpriteAttributes(self.oam[off + 2]), 
+            x: self.oam[off + 3]
+        }
+    }
+
     fn map_palette_addr(&self, addr: u16) -> usize {
         let a = match addr {
             0x3F10 => 0x3F00,
@@ -315,13 +342,13 @@ impl Ppu {
         self.scanline = 0;
         self.reg.ppu_addr_latch = false;
         self.reg.ppu_data_buffer = 0;
-        self.bg_tile_id = 0;
-        self.bg_tile_lsb = 0;
-        self.bg_tile_msb = 0;
-        self.bg_shift_attribute_lsb = 0;
-        self.bg_shift_attribute_msb = 0;
-        self.bg_shift_pattern_lsb = 0;
-        self.bg_shift_pattern_msb = 0;
+        self.bg.tile_id = 0;
+        self.bg.tile_lsb = 0;
+        self.bg.tile_msb = 0;
+        self.bg.shift_attribute_lsb = 0;
+        self.bg.shift_attribute_msb = 0;
+        self.bg.shift_pattern_lsb = 0;
+        self.bg.shift_pattern_msb = 0;
         Ok(())
     }
 
@@ -355,7 +382,7 @@ impl Ppu {
                     self.copy_y();
                 }
                 338 | 340 => {
-                    self.bg_tile_id = self
+                    self.bg.tile_id = self
                         .ppu_read(NAMETABLE_OFFSET | self.reg.v_addr.get_nametable_lookup_addr())?;
                 }
                 _ => (),
@@ -376,12 +403,12 @@ impl Ppu {
         if self.reg.mask.get_show_bg() {
             use bit::BitIndex;
             let bit_pos = 15 - (self.reg.fine_x as usize);
-            let pixel0 = self.bg_shift_pattern_lsb.bit(bit_pos) as u8;
-            let pixel1 = self.bg_shift_pattern_msb.bit(bit_pos) as u8;
+            let pixel0 = self.bg.shift_pattern_lsb.bit(bit_pos) as u8;
+            let pixel1 = self.bg.shift_pattern_msb.bit(bit_pos) as u8;
             let pixel = (pixel1 << 1) | pixel0;
 
-            let pal0 = self.bg_shift_attribute_lsb.bit(bit_pos) as u8;
-            let pal1 = self.bg_shift_attribute_msb.bit(bit_pos) as u8;
+            let pal0 = self.bg.shift_attribute_lsb.bit(bit_pos) as u8;
+            let pal1 = self.bg.shift_attribute_msb.bit(bit_pos) as u8;
             let palette = (pal1 << 1) | pal0;
             color = self.get_color(palette, pixel, true)?;
             // println!("{palette:?} {pixel:?} {color:?}");
@@ -467,28 +494,28 @@ impl Ppu {
     }
 
     fn load_bg_shift(&mut self) {
-        set_low_byte(&mut self.bg_shift_pattern_lsb, self.bg_tile_lsb);
-        set_low_byte(&mut self.bg_shift_pattern_msb, self.bg_tile_msb);
-        let attr_lo = if self.bg_tile_attribute & 0b1 != 0 {
+        set_low_byte(&mut self.bg.shift_pattern_lsb, self.bg.tile_lsb);
+        set_low_byte(&mut self.bg.shift_pattern_msb, self.bg.tile_msb);
+        let attr_lo = if self.bg.tile_attribute & 0b1 != 0 {
             0xFF
         } else {
             0
         };
-        let attr_hi = if self.bg_tile_attribute & 0b10 != 0 {
+        let attr_hi = if self.bg.tile_attribute & 0b10 != 0 {
             0xFF
         } else {
             0
         };
-        set_low_byte(&mut self.bg_shift_attribute_lsb, attr_lo);
-        set_low_byte(&mut self.bg_shift_attribute_msb, attr_hi);
+        set_low_byte(&mut self.bg.shift_attribute_lsb, attr_lo);
+        set_low_byte(&mut self.bg.shift_attribute_msb, attr_hi);
     }
 
     fn update_bg_shift(&mut self) {
         if self.reg.mask.get_show_bg() {
-            self.bg_shift_pattern_lsb <<= 1;
-            self.bg_shift_pattern_msb <<= 1;
-            self.bg_shift_attribute_lsb <<= 1;
-            self.bg_shift_attribute_msb <<= 1;
+            self.bg.shift_pattern_lsb <<= 1;
+            self.bg.shift_pattern_msb <<= 1;
+            self.bg.shift_attribute_lsb <<= 1;
+            self.bg.shift_attribute_msb <<= 1;
         }
     }
 
@@ -505,7 +532,7 @@ impl Ppu {
             0 => {
                 self.load_bg_shift();
                 // load nametable entry
-                self.bg_tile_id = self.ppu_read(self.reg.v_addr.get_nametable_lookup_addr() | NAMETABLE_OFFSET)?;
+                self.bg.tile_id = self.ppu_read(self.reg.v_addr.get_nametable_lookup_addr() | NAMETABLE_OFFSET)?;
             }
             2 => {
                 // Attribute Address:
@@ -513,7 +540,7 @@ impl Ppu {
                 // X, Y are the top 3 bits of the coarse_x and coarse_y V addr registers
 
                 // load attribute for tile
-                self.bg_tile_attribute = self.ppu_read(
+                self.bg.tile_attribute = self.ppu_read(
                     ATTRIBUTE_TABLE_OFFSET |
                     (self.reg.v_addr.0 & 0xC00) | // Get nametable select
                     (self.reg.v_addr.get_coarse_x() >> 2) |
@@ -522,28 +549,28 @@ impl Ppu {
                 // Byte from attribute table consists of four pairs of two bits
                 if self.reg.v_addr.get_coarse_y() & 0b10 != 0 {
                     // We're in the top of the quadrant
-                    self.bg_tile_attribute >>= 4;
+                    self.bg.tile_attribute >>= 4;
                 }
                 if self.reg.v_addr.get_coarse_x() & 0b10 != 0 {
                     // We're in the right of the quadrant
-                    self.bg_tile_attribute >>= 2;
+                    self.bg.tile_attribute >>= 2;
                 }
                 // We only care about the bottom two bits
-                self.bg_tile_attribute &= 0b11;
+                self.bg.tile_attribute &= 0b11;
             }
             4 => {
                 // load lsb of tile data
-                self.bg_tile_lsb = self.ppu_read(
+                self.bg.tile_lsb = self.ppu_read(
                     pattern_table_addr
-                    + ((self.bg_tile_id as u16) << 4)
+                    + ((self.bg.tile_id as u16) << 4)
                     + self.reg.v_addr.get_fine_y()
                 )?;
             }
             6 => {
                 // load msb of tile data
-                self.bg_tile_msb = self.ppu_read(
+                self.bg.tile_msb = self.ppu_read(
                     pattern_table_addr
-                        + ((self.bg_tile_id as u16) << 4)
+                        + ((self.bg.tile_id as u16) << 4)
                         + self.reg.v_addr.get_fine_y()
                         + 8,
                 )?;

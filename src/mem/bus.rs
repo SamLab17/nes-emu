@@ -10,8 +10,6 @@ use super::error::inv_addr;
 use super::ram::Ram;
 use crate::cart::cart::Cartridge;
 
-use crate::cart::cart::Cart;
-
 pub struct MemoryBus {
     ram: Ram,
     pub ppu: Ppu,
@@ -70,8 +68,7 @@ impl MemoryBus {
         match addr {
             0x0000..=0x1FFF => self.ram.read(addr),
             0x2000..=0x3FFF => self.ppu.read(addr),
-            0x4014 => self.ppu.read(addr),
-            0x4000..=0x4015 => Ok(0), /*todo!("Read APU")*/
+            0x4000..=0x4015 => Ok(0), 
             0x4016 => {
                 if let Some(p1) = self.p1.as_ref() {
                     Ok(p1.borrow_mut().read())
@@ -96,8 +93,7 @@ impl MemoryBus {
     pub fn write(&mut self, addr: u16, byte: u8) -> Result<()> {
         match addr {
             0x0000..=0x1FFF => self.ram.write(addr, byte),
-            0x2000..=0x3FFF => self.ppu.write(addr, byte, &self.ram),
-            0x4014 => self.ppu.write(addr, byte, &self.ram),
+            0x2000..=0x3FFF => self.ppu.write(addr, byte),
             0x4016 => {
                 if let Some(p1) = self.p1.as_ref() {
                     p1.borrow_mut().write(byte);

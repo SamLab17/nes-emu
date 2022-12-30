@@ -1,3 +1,5 @@
+use sdl2::pixels::Color;
+
 use super::decode::fetch_instr;
 use super::exec::{exec_instr, push_stack, push_stack_addr};
 use super::isa::Instr;
@@ -8,7 +10,7 @@ use crate::error::Result;
 use crate::mem::bus::MemoryBus;
 use crate::mem::bus::MemoryBusBuilder;
 use crate::mem::utils::make_address;
-use crate::ppu::ppu::Frame;
+use crate::ppu::ppu::{Frame, PatternTable};
 
 pub const STACK_OFFSET: u16 = 0x100;
 
@@ -39,11 +41,12 @@ const NUM_TICKS_PER_CPU_CYCLE: u8 = 3;
 
 pub struct Cpu {
     pub reg: Registers,
-    pub bus: MemoryBus,
+    bus: MemoryBus,
     pub interrupt: Option<Interrupt>,
-    cycles_left: u16,
-    ticks_left: u8,
-    log_cycles: u64,
+    cycles_left: u16, // Cycles left before next instruction
+    ticks_left: u8, // Ticks left before next CPU cycle
+    num_cpu_cycles: u64, // Number of CPU cycles elapsed
+    num_system_ticks: u64 // Number of system ticks elapsed
 }
 
 impl Cpu {
@@ -58,20 +61,22 @@ impl Cpu {
             interrupt: Some(Interrupt::Reset),
             cycles_left: 0,
             ticks_left: 0,
-            log_cycles: 0,
+            num_cpu_cycles: 0,
+            num_system_ticks: 0
         }
     }
 
     // CPU with only RAM for unit tests
     #[allow(dead_code)]
     pub fn mock(init_ram: Option<&[u8]>) -> Self {
-        Cpu {
+        Self {
             reg: Default::default(),
             bus: MemoryBusBuilder::new().with_ram(init_ram).build(),
             interrupt: None,
             cycles_left: 0,
             ticks_left: 0,
-            log_cycles: 0,
+            num_cpu_cycles: 0,
+            num_system_ticks: 0
         }
     }
 
@@ -118,18 +123,17 @@ impl Cpu {
                 return Ok(interrupt.num_cycles());
             }
         }
+
         // Address of the instruction we're about to fetch (fetch_instr modifies self.reg.pc)
         let pc = self.reg.pc;
         // Decode and run the next instruction
         let (i, ncycles) = fetch_instr(self)?;
-        // print!("{:X} {:<40} ", pc, format!("{}", i));
-        // println!("{}", self.reg);
-        // print!(" {:3},{:3}", self.bus.ppu.scanline, self.bus.ppu.cycle);
-        // println!(" CYC:{}", self.log_cycles);
+       
+        // Log instructions being run
         if let Some(log) = log {
             log.push_str(&format!(
                 "{:04X} {:?} {} PPU:{:3},{:3} CYC:{}\n",
-                pc, i.op, self.reg, self.bus.ppu.scanline, self.bus.ppu.cycle, self.log_cycles
+                pc, i.op, self.reg, self.bus.ppu.scanline, self.bus.ppu.cycle, self.num_cpu_cycles
             ));
         };
 
@@ -162,17 +166,18 @@ impl Cpu {
     }
 
     fn cycle(&mut self, log: Option<&mut String>) -> Result<()> {
-        // println!("cpu cycle");
         if self.cycles_left == 0 {
             self.cycles_left = self.run_next_instr(log)?;
         }
 
         self.cycles_left -= 1;
-        self.log_cycles += 1;
+        self.num_cpu_cycles += 1;
         Ok(())
     }
 
     pub fn system_tick(&mut self, log: Option<&mut String>) -> Result<Option<Frame>> {
+        self.num_system_ticks += 1;
+
         if self.ticks_left == 0 {
             self.cycle(log)?;
             self.ticks_left = NUM_TICKS_PER_CPU_CYCLE;
@@ -191,6 +196,39 @@ impl Cpu {
                 return Ok(frame);
             }
         }
+    }
+
+    pub fn read(&mut self, addr: u16) -> Result<u8> {
+        self.bus.read(addr)
+    }
+
+    pub fn write(&mut self, addr: u16, byte: u8) -> Result<()> {
+        if addr == 0x4014 {
+            // Intercept this write, PPU won't see it
+            // Do the entire DMA
+            for off in 0..=0xFFu8 {
+                let addr = make_address(off, byte);
+                let data = self.read(addr)?;
+                self.bus.ppu.oam_write(off, data);
+            }
+
+            self.cycles_left = 512;
+            if self.num_cpu_cycles % 2 == 1 {
+                self.cycles_left += 1
+            }
+
+            Ok(())
+        } else {
+            self.bus.write(addr, byte)
+        }
+    }
+
+    pub fn debug_pattern_tables(&mut self, palette: u8, bg: bool) -> Result<(PatternTable, PatternTable)> {
+        self.bus.ppu.debug_pattern_tables(palette, bg)
+    }
+
+    pub fn debug_palettes(&mut self) -> Vec<Vec<Color>> {
+        self.bus.ppu.debug_palettes()
     }
 
     pub fn debug_frame(&self) -> Frame {

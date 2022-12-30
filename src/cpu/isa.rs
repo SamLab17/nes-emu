@@ -119,6 +119,28 @@ impl fmt::Display for Instr {
     }
 }
 
+impl Instr {
+    pub fn length(&self) -> u8 {
+        // Returns the number of bytes this instruction takes
+        use AddressingMode::*;
+        match self.mode {
+            Accumulator => 1,
+            Absolute(_) => 3,
+            AbsoluteX(_) => 3,
+            AbsoluteY(_) => 3,
+            Immediate(_) => 2,
+            Implied => 1,
+            Indirect(_) => 3,
+            XIndirect(_) => 2,
+            IndirectY(_) => 2,
+            Relative(_) => 2,
+            ZeroPage(_) => 2,
+            ZeroPageX(_) => 2,
+            ZeroPageY(_) => 2,
+        }
+    }
+}
+
 #[cfg(test)]
 mod isa_tests {
     use super::{Instr, Opcode, AddressingMode};

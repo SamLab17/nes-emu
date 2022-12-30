@@ -141,8 +141,8 @@ fn cross_page_boundary(am: AddressingMode, cpu: &mut Cpu) -> bool {
         AbsoluteX(addr) => page_num(addr) != page_num(addr + (cpu.reg.x as u16)),
         AbsoluteY(addr) => page_num(addr) != page_num(addr.wrapping_add(cpu.reg.y as u16)),
         IndirectY(offset) => {
-            let lo = cpu.bus.read(offset as u16).unwrap();
-            let hi = cpu.bus.read((offset.wrapping_add(1)) as u16).unwrap();
+            let lo = cpu.read(offset as u16).unwrap();
+            let hi = cpu.read((offset.wrapping_add(1)) as u16).unwrap();
             let effective = make_address(lo, hi);
 
             page_num(effective) != page_num(effective.wrapping_add(cpu.reg.y as u16))
@@ -169,7 +169,7 @@ fn set_zero_flag(cpu: &mut Cpu, val: u8) {
 
 pub fn push_stack(cpu: &mut Cpu, byte: u8) -> Result<()> {
     let sp = (cpu.reg.sp as u16) + STACK_OFFSET;
-    cpu.bus.write(sp, byte)?;
+    cpu.write(sp, byte)?;
     // println!("push_stack: sp: {:X}, val: {:X}", cpu.reg.sp, byte);
     cpu.reg.sp -= 1;
     Ok(())
@@ -184,7 +184,7 @@ pub fn push_stack_addr(cpu: &mut Cpu, addr: u16) -> Result<()> {
 pub fn pop_stack(cpu: &mut Cpu) -> Result<u8> {
     cpu.reg.sp += 1;
     let sp = (cpu.reg.sp as u16) + STACK_OFFSET;
-    let val = cpu.bus.read(sp)?;
+    let val = cpu.read(sp)?;
     // println!("pop stack: sp: {:X}, val: {:X}", cpu.reg.sp, val);
     Ok(val)
 }
@@ -284,7 +284,7 @@ fn asl(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
         let addr = effective_addr(am, cpu)?;
         let val = deref_byte(am, cpu)?;
         let carry = is_negative(val);
-        cpu.bus.write(addr, val << 1)?;
+        cpu.write(addr, val << 1)?;
         cpu.reg.status.set(StatusFlags::CARRY, carry);
         set_zero_flag(cpu, val << 1);
         set_negative_flag(cpu, val << 1);
@@ -329,15 +329,17 @@ fn bpl(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
 }
 
 fn brk(_am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
-    push_stack_addr(cpu, cpu.reg.pc + 2)?;
+    panic!("BRK");
+    // push_stack_addr(cpu, cpu.reg.pc + 2)?;
 
-    cpu.reg.status.insert(StatusFlags::INTERRUPT_DISABLE);
+    // cpu.reg.status.insert(StatusFlags::INTERRUPT_DISABLE);
 
-    let mut flags = cpu.reg.status.clone();
-    flags.insert(StatusFlags::BREAK);
-    push_stack(cpu, cpu.reg.status.bits())?;
+    // let mut flags = cpu.reg.status.clone();
+    // flags.insert(StatusFlags::BREAK);
+    // push_stack(cpu, cpu.reg.status.bits())?;
 
-    cpu.reg.pc = make_address(cpu.bus.read(0xFFFE)?, cpu.bus.read(0xFFFF)?);
+    // cpu.reg.pc = make_address(cpu.read(0xFFFE)?, cpu.read(0xFFFF)?);
+    cpu.interrupt = Some(super::cpu::Interrupt::Request);
 
     Ok(0)
 }
@@ -385,7 +387,7 @@ fn cpy(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
 fn dec(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let e = effective_addr(am, cpu)?;
     let val = deref_byte(am, cpu)?.wrapping_sub(1);
-    cpu.bus.write(e, val)?;
+    cpu.write(e, val)?;
     set_negative_flag(cpu, val);
     set_zero_flag(cpu, val);
     Ok(0)
@@ -422,8 +424,8 @@ fn eor(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
 
 fn inc(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let addr = effective_addr(am, cpu)?;
-    let val = cpu.bus.read(addr)?.wrapping_add(1);
-    cpu.bus.write(addr, val)?;
+    let val = cpu.read(addr)?.wrapping_add(1);
+    cpu.write(addr, val)?;
 
     set_negative_flag(cpu, val);
     set_zero_flag(cpu, val);
@@ -523,7 +525,7 @@ fn lsr(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
         let addr = effective_addr(am, cpu)?;
         let val = deref_byte(am, cpu)?;
         let carry = val & 0b1 == 1;
-        cpu.bus.write(addr, val >> 1)?;
+        cpu.write(addr, val >> 1)?;
 
         cpu.reg.status.set(StatusFlags::CARRY, carry);
         set_zero_flag(cpu, val >> 1);
@@ -611,7 +613,7 @@ fn rol(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
         cpu.reg.status.set(StatusFlags::CARRY, new_carry);
         set_negative_flag(cpu, masked);
         set_zero_flag(cpu, masked);
-        cpu.bus.write(addr, masked)?;
+        cpu.write(addr, masked)?;
     }
     Ok(0)
 }
@@ -642,7 +644,7 @@ fn ror(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
         cpu.reg.status.set(StatusFlags::CARRY, new_carry);
         set_negative_flag(cpu, masked);
         set_zero_flag(cpu, masked);
-        cpu.bus.write(addr, masked)?;
+        cpu.write(addr, masked)?;
     }
     Ok(0)
 }
@@ -714,35 +716,20 @@ fn sei(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
 
 fn sta(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let addr = effective_addr(am, cpu)?;
-    cpu.bus.write(addr, cpu.reg.a)?;
-    if addr == 0x4014 {
-        // FIXME: Make odd/even cycle sensitive?
-        Ok(513)
-    } else {
-        Ok(0)
-    }
+    cpu.write(addr, cpu.reg.a)?;
+    Ok(0)
 }
 
 fn stx(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let addr = effective_addr(am, cpu)?;
-    cpu.bus.write(addr, cpu.reg.x)?;
-    if addr == 0x4014 {
-        // FIXME: Make odd/even cycle sensitive?
-        Ok(513)
-    } else {
-        Ok(0)
-    }
+    cpu.write(addr, cpu.reg.x)?;
+    Ok(0)
 }
 
 fn sty(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
     let addr = effective_addr(am, cpu)?;
-    cpu.bus.write(addr, cpu.reg.y)?;
-    if addr == 0x4014 {
-        // FIXME: Make odd/even cycle sensitive?
-        Ok(513)
-    } else {
-        Ok(0)
-    }
+    cpu.write(addr, cpu.reg.y)?;
+    Ok(0)
 }
 
 fn tax(_: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
@@ -814,12 +801,12 @@ mod exec_tests {
         assert!(!cross_page_boundary(AbsoluteY(0x00), &mut cpu));
 
         cpu.reg.y = 0x80;
-        cpu.bus.write(0x42, 0xFF).unwrap();
-        cpu.bus.write(0x43, 0x00).unwrap();
+        cpu.write(0x42, 0xFF).unwrap();
+        cpu.write(0x43, 0x00).unwrap();
         assert!(cross_page_boundary(IndirectY(0x42), &mut cpu));
 
-        cpu.bus.write(0x42, 0x00).unwrap();
-        cpu.bus.write(0x43, 0x10).unwrap();
+        cpu.write(0x42, 0x00).unwrap();
+        cpu.write(0x43, 0x10).unwrap();
         assert!(!cross_page_boundary(IndirectY(0x42), &mut cpu));
 
         cpu.reg.pc = 0x01FF;

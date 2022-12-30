@@ -72,7 +72,7 @@ pub mod instr_lookup {
 
 // Reads byte at current PC, then advances PC
 fn read_next_byte(cpu: &mut Cpu) -> Result<u8> {
-    let byte = cpu.bus.read(cpu.reg.pc)?;
+    let byte = cpu.read(cpu.reg.pc)?;
     cpu.reg.pc += 1;
     Ok(byte)
 }

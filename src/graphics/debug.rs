@@ -56,14 +56,10 @@ impl NesGraphics for DebugGraphics {
         }
 
         // Draw Palette Tables
-        let palettes = cpu.bus.ppu.debug_palettes();
+        let palettes = cpu.debug_palettes();
         let (p0, p1) = cpu
-            .bus
-            .ppu
             .debug_pattern_tables(self.curr_palette % 4, self.curr_palette < 4)?;
 
-        // println!("palette 0: {:?}", palettes[0]);
-        // println!("pattern table: {:?}", p0);
         self.draw_pattern_table(
             &p1,
             2,

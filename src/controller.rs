@@ -4,14 +4,14 @@ use bitflags::bitflags;
 
 bitflags! {
     pub struct Inputs: u8 {
-        const A = 1;
-        const B = 2;
-        const SELECT = 4;
-        const START = (1 << 3);
-        const UP = 16;
-        const DOWN = 32;
-        const LEFT = 64;
-        const RIGHT = 128;
+        const A      = (1 << 0);
+        const B      = (1 << 1);
+        const SELECT = (1 << 2);
+        const START  = (1 << 3);
+        const UP     = (1 << 4);
+        const DOWN   = (1 << 5);
+        const LEFT   = (1 << 6);
+        const RIGHT  = (1 << 7);
     }
 }
 
@@ -38,7 +38,6 @@ impl Controller {
     }
 
     pub fn write(&mut self, value: u8) {
-        println!("write: {value:X}");
         self.strobe = (value & 1) != 0;
         self.read_state = self.inputs.bits;
     }

@@ -55,18 +55,17 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut running = true;
 
-    const FPS: f64 = 64.0;
+    const FPS: f64 = 60.0;
 
     let start_time = Instant::now();
+    let mut prev_time = Instant::now();
+    let mut residual_time = 0.0;
     let mut paused = false;
 
     let mut num_frames = 0;
     // Main loop
     while running {
-        let pre_time = graphics.performance_counter()?;
-
-
-        let events = graphics.events().into_iter().collect::<Vec<Event>>();
+        let events = graphics.events();
         // Poll for events
         for event in events {
             match event {
@@ -125,15 +124,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         // Generate frame
         if !paused {
-            graphics.render_frame(cpu.next_frame()?, &mut cpu)?;
-            num_frames += 1;
-            let curr_time = graphics.performance_counter()?;
-
-            let render_time =
-                (curr_time - pre_time) as f64 / (graphics.performance_frequency()? as f64);
-            let sleep = f64::max((1.0 / FPS) - render_time, 0.0);
-            std::thread::sleep(Duration::from_secs_f64(sleep));
+            let now = Instant::now();
+            let elapsed = (now - prev_time).as_secs_f64();
+            if residual_time > 0.0 {
+                residual_time -= elapsed;
+            } else {
+                residual_time += (1.0 / FPS) - elapsed;
+                graphics.render_frame(cpu.next_frame()?, &mut cpu)?;
+                num_frames += 1;
+            }
+            prev_time = now;
         }
+        // prev_time = Instant::now();
     }
 
     let elapsed = (Instant::now() - start_time).as_millis();
