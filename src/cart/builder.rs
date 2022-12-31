@@ -5,6 +5,7 @@ use crate::error::Result;
 use super::cart::Cartridge;
 use super::mapper0::build_nrom_cart;
 use super::mapper1::build_mmc1_cart;
+use super::mapper2::build_uxrom;
 
 
 pub fn build_cartridge(rom: &INesFile) -> Result<Cartridge> {
@@ -14,6 +15,7 @@ pub fn build_cartridge(rom: &INesFile) -> Result<Cartridge> {
         match rom.header.mapper {
             0 => build_nrom_cart(&rom.prg_rom, &rom.chr_rom, rom.header.mirror_type),
             1 => build_mmc1_cart(&rom.prg_rom, &rom.chr_rom),
+            2 => build_uxrom(&rom.prg_rom, &rom.chr_rom, rom.header.mirror_type),
             _ => Err("ROM uses an unsupported mapper".into())
         }
     }

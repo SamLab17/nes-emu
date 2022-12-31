@@ -87,3 +87,47 @@ pub fn nametable_addr(mut addr: u16, mirror_type: MirrorType) -> u16 {
         },
     }
 }
+
+#[cfg(test)]
+mod cart_tests {
+    use crate::{cart::cart::nametable_addr, ines::parse::MirrorType};
+
+    #[test]
+    fn test_mirroring() {
+        for off in 0..0x400 {
+            assert_eq!(
+                nametable_addr(0x2400 + off, MirrorType::Horizontal),
+                0x000 + off
+            );
+            assert_eq!(
+                nametable_addr(0x2000 + off, MirrorType::Horizontal),
+                0x000 + off
+            );
+            assert_eq!(
+                nametable_addr(0x2C00 + off, MirrorType::Horizontal),
+                0x400 + off
+            );
+            assert_eq!(
+                nametable_addr(0x2800 + off, MirrorType::Horizontal),
+                0x400 + off
+            );
+
+            assert_eq!(
+                nametable_addr(0x2800 + off, MirrorType::Vertical),
+                0x000 + off
+            );
+            assert_eq!(
+                nametable_addr(0x2000 + off, MirrorType::Vertical),
+                0x000 + off
+            );
+            assert_eq!(
+                nametable_addr(0x2C00 + off, MirrorType::Vertical),
+                0x400 + off
+            );
+            assert_eq!(
+                nametable_addr(0x4C00 + off, MirrorType::Vertical),
+                0x400 + off
+            );
+        }
+    }
+}

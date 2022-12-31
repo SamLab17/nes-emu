@@ -51,11 +51,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let rom = fs::read(Path::new(&args.rom_path))?;
     let ines_rom = INesFile::try_from(&rom).expect("Path provided is not a valid NES ROM.");
 
+    if args.debug {
+        println!("{:#X?}", ines_rom.header);
+    }
+
     let controller = make_controller();
     let cart = build_cartridge(&ines_rom).expect("This ROM is not supported.");
 
     if args.debug {
-        println!("{:#X?}", ines_rom.header);
         println!("Cartridge type: {}", cart.name());
     }
 

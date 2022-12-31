@@ -232,10 +232,6 @@ impl Cpu {
         self.bus.ppu.debug_palettes()
     }
 
-    pub fn debug_frame(&self) -> Frame {
-        self.bus.ppu.buffer.clone()
-    }
-
     pub fn debug_oam(&self) -> Vec<OamSprite> {
         (0..64).map(|idx| self.bus.ppu.oam_read(idx)).collect::<Vec<OamSprite>>()
     }

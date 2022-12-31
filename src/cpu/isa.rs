@@ -120,6 +120,7 @@ impl fmt::Display for Instr {
 }
 
 impl Instr {
+    #[allow(dead_code)]
     pub fn length(&self) -> u8 {
         // Returns the number of bytes this instruction takes
         use AddressingMode::*;

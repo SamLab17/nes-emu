@@ -1,9 +1,6 @@
 use std::fmt;
 use std::num::Wrapping;
-use std::{collections::HashMap, error::Error};
-
-use lazy_static::lazy_static;
-use strum::IntoEnumIterator;
+use std::error::Error;
 
 use crate::error::Result;
 
