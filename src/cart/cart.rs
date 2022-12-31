@@ -7,7 +7,6 @@ use crate::ines::parse::MirrorType;
 
 pub enum PpuMemoryError {
     PpuReadOnly(u16),
-    // PpuWriteOnly(u16),
     PpuInvalidAddress(u16)
 }
 
@@ -17,7 +16,6 @@ impl fmt::Display for PpuMemoryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             PpuMemoryError::PpuReadOnly(a) => write!(f, "PpuReadOnly(0x{:X})", *a),
-            // PpuMemoryError::PpuWriteOnly(a) => write!(f, "PpuWriteOnly(0x{:X})", *a),
             PpuMemoryError::PpuInvalidAddress(a) => write!(f, "PpuInvalidAddress(0x{:X})", *a),
         }
     }
@@ -32,10 +30,6 @@ impl fmt::Debug for PpuMemoryError {
 pub fn ppu_rd_only(addr: u16) -> Box<dyn Error> {
     Box::new(PpuMemoryError::PpuReadOnly(addr))
 }
-
-// pub fn ppu_wr_only(addr: u16) -> Box<dyn Error> {
-//     Box::new(PpuMemoryError::PpuWriteOnly(addr))
-// }
 
 pub fn ppu_inv_addr(addr: u16) -> Box<dyn Error> {
     Box::new(PpuMemoryError::PpuInvalidAddress(addr))

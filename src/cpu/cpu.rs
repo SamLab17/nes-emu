@@ -245,8 +245,8 @@ impl Cpu {
 mod cpu_test {
     use crate::{cart::builder::build_cartridge, cpu::cpu::Cpu, ines::parse::INesFile};
 
-    static NESTEST: &'static [u8] = include_bytes!("../../roms/nestest.nes");
-    static NESTEST_LOG: &'static str = include_str!("../../nestest-trimmed.log");
+    static NESTEST: &'static [u8] = include_bytes!("../../test_files/nestest.nes");
+    static NESTEST_LOG: &'static str = include_str!("../../test_files/nestest-trimmed.log");
 
     #[test]
     fn nestest() {

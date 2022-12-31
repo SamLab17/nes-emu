@@ -11,13 +11,23 @@ use bit::BitIndex;
 use derive_try_from_primitive::TryFromPrimitive;
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, TryFromPrimitive)]
+#[derive(Clone, Copy, Debug, TryFromPrimitive, PartialEq, Eq)]
 pub enum MirrorType {
     Horizontal = 0,
     Vertical = 1,
+
     // These aren't found in iNES files, but used elsewhere
     OneScreenLow = 2,
     OneScreenHigh = 3,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, TryFromPrimitive, PartialEq, Eq)]
+pub enum TimingMode {
+    NTSC = 0,
+    PAL = 1,
+    MULTIPLE = 2,
+    DENDY = 3
 }
 
 #[derive(Debug)]
@@ -42,7 +52,7 @@ pub struct INesHeader {
     pub mapper: u16,
     pub submapper: u8,
 
-    pub tv_system: u8,
+    pub timing: TimingMode,
 }
 
 pub struct INesFile {
@@ -140,7 +150,7 @@ impl INesFile {
                 console_type : flags7.bit_range(0..2),
                 mapper : mapper,
                 submapper : flags8.bit_range(4..8),
-                tv_system : flags12 & 0b11
+                timing : TimingMode::try_from(flags12 & 0b11).unwrap()
             })
         )
     }

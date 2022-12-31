@@ -30,7 +30,21 @@ struct CliArgs {
     debug: bool,
 }
 
-// #[funtime::timed]
+fn map_inputs(keycode: Keycode) -> Option<controller::Inputs> {
+    use Keycode::*;
+    match keycode {
+        W => Some(controller::Inputs::UP),
+        A => Some(controller::Inputs::LEFT),
+        S => Some(controller::Inputs::DOWN),
+        D => Some(controller::Inputs::RIGHT),
+        J => Some(controller::Inputs::B),
+        K => Some(controller::Inputs::A),
+        Q => Some(controller::Inputs::SELECT),
+        E => Some(controller::Inputs::START),
+        _ => None
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args = CliArgs::parse();
 
@@ -88,37 +102,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
                 #[rustfmt::skip]
                 Event::KeyDown {  keycode: Some(keycode), ..} => {
-                    use Keycode::*;
-                    let input = match keycode {
-                        W => Some(controller::Inputs::UP),
-                        A => Some(controller::Inputs::LEFT),
-                        S => Some(controller::Inputs::DOWN),
-                        D => Some(controller::Inputs::RIGHT),
-                        J => Some(controller::Inputs::B),
-                        K => Some(controller::Inputs::A),
-                        Q => Some(controller::Inputs::SELECT),
-                        E => Some(controller::Inputs::START),
-                        _ => None
-                    };
-                    if let Some(input) = input {
+                    if let Some(input) = map_inputs(keycode) {
                         controller.borrow_mut().input(input);
                     }
                 }
                 #[rustfmt::skip]
                 Event::KeyUp {  keycode: Some(keycode), ..} => {
-                    use Keycode::*;
-                    let input = match keycode {
-                        W => Some(controller::Inputs::UP),
-                        A => Some(controller::Inputs::LEFT),
-                        S => Some(controller::Inputs::DOWN),
-                        D => Some(controller::Inputs::RIGHT),
-                        J => Some(controller::Inputs::B),
-                        K => Some(controller::Inputs::A),
-                        Q => Some(controller::Inputs::SELECT),
-                        E => Some(controller::Inputs::START),
-                        _ => None
-                    };
-                    if let Some(input) = input {
+                    if let Some(input) = map_inputs(keycode) {
                         controller.borrow_mut().remove_input(input);
                     }
                 }

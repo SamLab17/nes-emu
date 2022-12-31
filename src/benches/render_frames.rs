@@ -1,15 +1,13 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use nes_emu::cpu::cpu::Cpu;
 use nes_emu::cart::builder::build_cartridge;
-// use nes_emu::graphics::graphics::GraphicsBuilder;
-// use nes_emu::cpu::cpu::Cpu;
 use nes_emu::ines::parse::INesFile;
 use std::fs;
 use std::time::Duration;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     const ROM: &'static str = "roms/smb.nes";
-    let rom = fs::read(ROM).unwrap();
+    let rom = fs::read(ROM).expect("Could not find ROM at given path.");
     let ines_rom = INesFile::try_from(&rom).expect("Path provided is not a valid NES ROM.");
 
     let mut cpu = Cpu::new(
