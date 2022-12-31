@@ -11,7 +11,7 @@ use sdl2::pixels::Color;
 
 use super::colors::{load_color_map, ColorMap};
 
-pub type Frame = Box<[[Color; 256]; 240]>;
+pub type Frame = Rc<RefCell<Box<[[Color; 256]; 240]>>>;
 pub type PatternTable = Box<[[Color; 128]; 128]>;
 
 fn set_low_byte(x: &mut u16, lsb: u8) {
@@ -79,14 +79,11 @@ pub struct PpuReg {
     mask: PpuMask,
     status: PpuStatus,
     oam_addr: u8,
-    oam_data: u8,
-    ppu_scroll: u16,
     // Whether we're writing to the upper or lower byte of ppu_addr
     // aka "w" register
     ppu_addr_latch: bool,
     ppu_data: u8,
     ppu_data_buffer: u8,
-    oam_dma: u8,
     t_addr: PpuAddress,
     v_addr: PpuAddress,
     // aka "x" register
@@ -105,9 +102,23 @@ struct BackgroundState {
     shift_attribute_msb: u16,
 }
 
+#[derive(Debug, Clone)]
+pub struct PendingSprite {
+    sprite: OamSprite,
+    row_offset: u8,
+    col_offset: u8,
+    is_sprite_zero: bool
+}
+
+#[derive(Default, Debug)]
+struct ForegroundState {
+    scanline_sprites: Vec<PendingSprite>,
+    sprite_zero_hit: bool
+}
+
 bitfield! {
     #[derive(Debug, Default, Clone, Copy)]
-    struct SpriteAttributes(u8);
+    pub struct SpriteAttributes(u8);
     u8;
     get_palette, _: 1, 0;
     get_priority, _: 5;
@@ -116,11 +127,11 @@ bitfield! {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct OamSprite {
-    y: u8,
-    id: u8,
-    attributes: SpriteAttributes,
-    x: u8
+pub struct OamSprite {
+    pub y: u8,
+    pub id: u8,
+    pub attributes: SpriteAttributes,
+    pub x: u8
 }
 
 // impl PpuReg {}
@@ -154,13 +165,15 @@ impl PpuBuilder {
             odd_frame: false,
             cycle: 0,
             scanline: 0,
-            buffer: Box::new([[Color::BLACK; 256]; 240]),
-            bg: BackgroundState::default()
+            buffer: Rc::new(RefCell::new(Box::new([[Color::BLACK; 256]; 240]))),
+            bg: BackgroundState::default(),
+            fg: ForegroundState::default()
             // buffer: [[Color::BLACK; 256]; 240]
         })
     }
 }
 
+#[derive(Debug)]
 pub struct Ppu {
     pub buffer: Frame,
     cart: Rc<RefCell<Cartridge>>,
@@ -169,12 +182,13 @@ pub struct Ppu {
     oam: [u8; 256],
     palettes: [u8; 256],
     // Memory-mapped registers
-    reg: PpuReg,
+    pub reg: PpuReg,
     odd_frame: bool,
     pub cycle: u64,
     pub scanline: i32,
     // Background rendering intermediates
-   bg: BackgroundState
+   bg: BackgroundState,
+   fg: ForegroundState
 }
 
 impl Ppu {
@@ -232,9 +246,11 @@ impl Ppu {
                 2 => Err(rd_only(addr)),
                 3 => Ok(self.reg.oam_addr = byte),
                 4 => {
-                    todo!("Increment oam_addr, and actually perform write?");
+                    self.oam[self.reg.oam_addr as usize] = byte;
+                    Ok(())
                 }
                 5 => {
+                    // println!("Write to scroll: 0x{:X}", byte);
                     // Scroll register
                     if self.reg.ppu_addr_latch {
                         self.reg.t_addr.set_coarse_y((byte >> 3) as u16);
@@ -284,8 +300,8 @@ impl Ppu {
     }
 
     // Read a sprite (4 bytes) from OAM memory
-    fn oam_read(&self, index: u8) -> OamSprite {
-        assert!((index as usize) < self.oam.len() / 4);
+    pub fn oam_read(&self, index: u8) -> OamSprite {
+        debug_assert!((index as usize) < self.oam.len() / 4);
 
         let off = (index as usize) << 2;
         OamSprite {
@@ -333,9 +349,9 @@ impl Ppu {
     pub fn reset(&mut self) -> Result<()> {
         self.reg.control = PpuControl(0);
         self.reg.mask = PpuMask(0);
-        self.reg.ppu_scroll = 0;
         self.reg.fine_x = 0;
         self.reg.t_addr.0 = 0;
+        self.reg.v_addr.0 = 0;
         self.reg.ppu_data = 0;
         self.odd_frame = false;
         self.cycle = 0;
@@ -357,16 +373,22 @@ impl Ppu {
         let mut ret_int = None;
 
         if self.scanline >= -1 && self.scanline < 240 {
-            if self.scanline == 0 && self.cycle == 0 {
-                self.cycle = 1;
-                return Ok((None, None));
-            }
+            // if self.scanline == 0 && self.cycle == 0 {
+            //     self.cycle = 1;
+            //     return Ok((None, None));
+            // }
             if self.scanline == -1 && self.cycle == 1 {
                 self.reg.status.set_vblank_start(false);
+                self.reg.status.set_sprite_overflow(false);
+                self.reg.status.set_sprite_zero_hit(false);
+                self.fg.sprite_zero_hit = false;
             }
             if (2..258).contains(&self.cycle) || (321..338).contains(&self.cycle) {
                 self.update_bg_shift();
                 self.load_bg()?;
+            }
+            if (2..258).contains(&self.cycle) {
+                self.update_sprites();
             }
             match self.cycle {
                 256 => {
@@ -377,6 +399,10 @@ impl Ppu {
                     // Reset X
                     self.load_bg_shift();
                     self.copy_x();
+                    if self.scanline >= 0 {
+                        // Find sprites for the next scanline
+                        self.find_sprites_for_scanline()
+                    }
                 }
                 280..=304 if self.scanline == -1 => {
                     self.copy_y();
@@ -386,6 +412,9 @@ impl Ppu {
                         .ppu_read(NAMETABLE_OFFSET | self.reg.v_addr.get_nametable_lookup_addr())?;
                 }
                 _ => (),
+            }
+            if self.scanline >= 0 && self.cycle == 340 {
+                self.find_sprites_for_scanline()
             }
         }
 
@@ -399,26 +428,81 @@ impl Ppu {
         }
         // }
 
-        let mut color = Color::BLACK;
+        let mut pixel = 0;
+        let mut palette = 0;
+        let mut bg = true;
         if self.reg.mask.get_show_bg() {
             use bit::BitIndex;
             let bit_pos = 15 - (self.reg.fine_x as usize);
             let pixel0 = self.bg.shift_pattern_lsb.bit(bit_pos) as u8;
             let pixel1 = self.bg.shift_pattern_msb.bit(bit_pos) as u8;
-            let pixel = (pixel1 << 1) | pixel0;
+            pixel = (pixel1 << 1) | pixel0;
 
             let pal0 = self.bg.shift_attribute_lsb.bit(bit_pos) as u8;
             let pal1 = self.bg.shift_attribute_msb.bit(bit_pos) as u8;
-            let palette = (pal1 << 1) | pal0;
-            color = self.get_color(palette, pixel, true)?;
+            palette = (pal1 << 1) | pal0;
+            // color = self.get_color(palette, pixel, true)?;
             // println!("{palette:?} {pixel:?} {color:?}");
         }
 
-        if self.cycle > 0 {
+        if self.reg.mask.get_show_sprites() {
+            let mut sprite_pixel = 0;
+            let mut sprite_palette = 0;
+            let mut bg_priority = false;
+            let mut sprite_zero = false;
+            for idx in 0..self.fg.scanline_sprites.len() {
+                let PendingSprite { sprite, row_offset, col_offset , is_sprite_zero} = self.fg.scanline_sprites[idx];
+                if sprite.x == 0 && col_offset < 8 {
+                    sprite_pixel = self.get_sprite_pixel(&sprite, row_offset, col_offset)?;
+                    sprite_palette = sprite.attributes.get_palette();
+                    bg_priority = sprite.attributes.get_priority();
+                    sprite_zero = is_sprite_zero;
+                    if sprite_pixel != 0 {
+                        break;
+                    }
+                }
+            }
+
+            // Priority rules
+            let bg_transparent = pixel == 0;
+            let sprite_transparent = sprite_pixel == 0;
+            if bg_transparent {
+                pixel = sprite_pixel;
+                palette = sprite_palette;
+                bg = false;
+            }
+            else if !sprite_transparent && !bg_transparent {
+                if !bg_priority {
+                    // Sprite overwrites the background
+                    pixel = sprite_pixel;
+                    palette = sprite_palette;
+                    bg = false;
+                }
+                // Check for sprite zero collision
+                // if sprite_zero && self.reg.mask.get_show_bg() && self.reg.mask.get_show_sprites() && !self.fg.sprite_zero_hit {
+                if sprite_zero && self.reg.mask.get_show_bg() && self.reg.mask.get_show_sprites() { 
+                    if !self.reg.mask.get_show_bg_left() || !self.reg.mask.get_show_sprits_left() {
+                        if (9..258).contains(&self.cycle) {
+                            self.reg.status.set_sprite_zero_hit(true);
+                            self.fg.sprite_zero_hit = true;
+                            // println!("sprite zero hit");
+                        } 
+                    } else {
+                        if (1..258).contains(&self.cycle) {
+                            self.reg.status.set_sprite_zero_hit(true);
+                            self.fg.sprite_zero_hit = true;
+                            // println!("sprite zero hit");
+                        }
+                    }
+                }
+            }
+        }
+
+        if self.cycle > 0  && self.rendering_enabled() {
             let row = self.scanline as usize;
             let col = (self.cycle - 1) as usize;
-            if row < self.buffer.len() && col < self.buffer[row].len() {
-                self.buffer[row][col] = color;
+            if row < self.buffer.borrow().len() && col < self.buffer.borrow()[row].len() {
+                self.buffer.borrow_mut()[row][col] = self.get_color(palette, pixel, bg)?;
             }
         }
 
@@ -602,6 +686,97 @@ impl Ppu {
         }
     }
 
+    fn find_sprites_for_scanline(&mut self) {
+        assert!(self.scanline >= 0);
+
+        let sprite_height = if self.reg.control.get_sprite_size() {
+            16
+        } else {
+            8
+        };
+
+        self.fg.scanline_sprites.clear();
+        
+        for idx in 0..64 {
+            let sprite = self.oam_read(idx);
+            // Notice that we use the current scanline number here but are preparing
+            // sprites for the _next_ scanline. This is intentional and sprites in OAM memory
+            // have their y position offset by 1 because of this.
+            let diff = (self.scanline as i16) - (sprite.y as i16);
+            if diff >= 0 && diff < sprite_height {
+                if self.fg.scanline_sprites.len() < 8 {
+                    let ps = PendingSprite { sprite, row_offset: diff as u8, col_offset: 0, is_sprite_zero: idx == 0 } ;
+                    self.fg.scanline_sprites.push(ps);
+                } else {
+                    self.reg.status.set_sprite_overflow(true);
+                    break;
+                }
+            }
+        }
+        assert!(self.fg.scanline_sprites.len() <= 8);
+    }
+
+    fn update_sprites(&mut self) {
+        if self.reg.mask.get_show_sprites() {
+            for PendingSprite { sprite, row_offset: _, col_offset , is_sprite_zero: _} in self.fg.scanline_sprites.iter_mut() {
+                if sprite.x > 0 {
+                    sprite.x -= 1;
+                } else if *col_offset < 8 {
+                    *col_offset += 1;
+                }
+            }
+        }
+    }
+
+    fn get_sprite_pixel(&mut self, sprite: &OamSprite, mut r: u8, mut c: u8) -> Result<u8> {
+        use bit::BitIndex;
+
+        debug_assert!(c < 8);
+
+        if self.reg.control.get_sprite_size() {
+            // 8x16
+            debug_assert!(r < 16);
+            if !sprite.attributes.get_flip_horizontal() {
+                // Because of the way we're indexing into the byte, we subtract from 7 when
+                // _not_ flipped. (If flipped then we keep c as is)
+                c = 7 - c;
+            }
+            if sprite.attributes.get_flip_vertical() {
+                r = 15 - r;
+            }
+
+            let pattern_base = ((sprite.id & 1) as u16) << 12;
+
+            let tile_addr_lo = pattern_base 
+                                | ((sprite.id & 0xFE) as u16 * 16)      // Each pattern is 16 bytes
+                                | (r as u16);                         // Row offset
+            let tile_addr_hi = tile_addr_lo + 8;
+            let lo = self.ppu_read(tile_addr_lo)?;
+            let hi = self.ppu_read(tile_addr_hi)?;
+            let pixel = ((hi.bit(c as usize) as u8) << 1) | (lo.bit(c as usize) as u8);
+            Ok(pixel) 
+        } else {
+            // 8x8
+            assert!(r < 8);
+            let pattern_base = (self.reg.control.get_sprite_table_addr() as u16) << 12;
+
+            if !sprite.attributes.get_flip_horizontal() {
+                c = 7 - c;
+            } 
+            if sprite.attributes.get_flip_vertical() {
+                r = 7 - r;
+            }
+            let tile_addr_lo = pattern_base 
+                                | (sprite.id as u16 * 16) // Each pattern is 16 bytes
+                                | (r as u16);           // Row offset
+            let tile_addr_hi = tile_addr_lo + 8;
+            let lo = self.ppu_read(tile_addr_lo)?;
+            let hi = self.ppu_read(tile_addr_hi)?;
+            let pixel = ((hi.bit(c as usize) as u8) << 1) | (lo.bit(c as usize) as u8);
+            Ok(pixel)
+        }
+    }
+
     // returns the 4 background and 4 foreground palettes
     pub fn debug_palettes(&mut self) -> Vec<Vec<Color>> {
         let mut background: Vec<Vec<Color>> = (0..4)
@@ -671,7 +846,7 @@ mod ppu_test {
 
     use bitfield::bitfield;
 
-    use super::PpuAddress;
+    use super::{PpuAddress, SpriteAttributes};
 
     bitfield! {
         struct ControlReg(u8);
@@ -721,5 +896,15 @@ mod ppu_test {
         assert_eq!(a.get_fine_y(), 0);
         a.0 = 0xFFFF;
         assert_eq!(a.get_nametable_lookup_addr(), a.0 & 0x0FFF);
+    }
+
+    #[test]
+    fn sprite_attr_tests() {
+        let attr = SpriteAttributes(0xE3);
+        assert!(attr.get_flip_horizontal());
+        assert!(attr.get_flip_vertical());
+        let attr = SpriteAttributes(0);
+        assert!(!attr.get_flip_horizontal());
+        assert!(!attr.get_flip_vertical());
     }
 }

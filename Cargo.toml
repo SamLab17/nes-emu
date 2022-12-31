@@ -44,3 +44,11 @@ version = "0.35.2"
 default-features = false
 features = ["unsafe_textures"]
 
+[dev-dependencies]
+criterion = "0.3.4"
+
+[[bench]]
+name = "render_frames"
+path = "src/benches/render_frames.rs"
+harness = false
+

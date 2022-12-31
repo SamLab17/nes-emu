@@ -41,89 +41,75 @@ impl fmt::Display for ExecutionError {
 // (this extra will be added to number of cycles in instruction matrix)
 type OpcodeFn = fn(AddressingMode, &mut Cpu) -> Result<u16>;
 
-lazy_static! {
-    static ref OPCODE_FUNCTIONS: HashMap<Opcode, OpcodeFn> = {
-        fn lookup_opcode_fn(op: Opcode) -> OpcodeFn {
-            use Opcode::*;
-            match op {
-                ADC => adc,
-                AND => and,
-                ASL => asl,
-                BCC => bcc,
-                BCS => bcs,
-                BEQ => beq,
-                BIT => bit,
-                BMI => bmi,
-                BNE => bne,
-                BPL => bpl,
-                BRK => brk,
-                BVC => bvc,
-                BVS => bvs,
-                CLC => clc,
-                CLD => cld,
-                CLI => cli,
-                CLV => clv,
-                CMP => cmp,
-                CPX => cpx,
-                CPY => cpy,
-                DEC => dec,
-                DEX => dex,
-                DEY => dey,
-                EOR => eor,
-                INC => inc,
-                INX => inx,
-                INY => iny,
-                JMP => jmp,
-                JSR => jsr,
-                LAX => lax,
-                LDA => lda,
-                LDX => ldx,
-                LDY => ldy,
-                LSR => lsr,
-                NOP => nop,
-                ORA => ora,
-                PHA => pha,
-                PHP => php,
-                PLA => pla,
-                PLP => plp,
-                ROL => rol,
-                ROR => ror,
-                RTI => rti,
-                RTS => rts,
-                SBC => sbc,
-                SEC => sec,
-                SED => sed,
-                SEI => sei,
-                STA => sta,
-                STX => stx,
-                STY => sty,
-                TAX => tax,
-                TAY => tay,
-                TSX => tsx,
-                TXA => txa,
-                TXS => txs,
-                TYA => tya,
-                INVALID => invalid_op,
-            }
-        }
-
-        let mut m = HashMap::new();
-        for opcode in Opcode::iter() {
-            m.insert(opcode, lookup_opcode_fn(opcode));
-        }
-        m
-    };
+fn lookup_opcode_fn(op: Opcode) -> OpcodeFn {
+    use Opcode::*;
+    match op {
+        ADC => adc,
+        AND => and,
+        ASL => asl,
+        BCC => bcc,
+        BCS => bcs,
+        BEQ => beq,
+        BIT => bit,
+        BMI => bmi,
+        BNE => bne,
+        BPL => bpl,
+        BRK => brk,
+        BVC => bvc,
+        BVS => bvs,
+        CLC => clc,
+        CLD => cld,
+        CLI => cli,
+        CLV => clv,
+        CMP => cmp,
+        CPX => cpx,
+        CPY => cpy,
+        DEC => dec,
+        DEX => dex,
+        DEY => dey,
+        EOR => eor,
+        INC => inc,
+        INX => inx,
+        INY => iny,
+        JMP => jmp,
+        JSR => jsr,
+        LAX => lax,
+        LDA => lda,
+        LDX => ldx,
+        LDY => ldy,
+        LSR => lsr,
+        NOP => nop,
+        ORA => ora,
+        PHA => pha,
+        PHP => php,
+        PLA => pla,
+        PLP => plp,
+        ROL => rol,
+        ROR => ror,
+        RTI => rti,
+        RTS => rts,
+        SBC => sbc,
+        SEC => sec,
+        SED => sed,
+        SEI => sei,
+        STA => sta,
+        STX => stx,
+        STY => sty,
+        TAX => tax,
+        TAY => tay,
+        TSX => tsx,
+        TXA => txa,
+        TXS => txs,
+        TYA => tya,
+        INVALID => invalid_op,
+    }
 }
+
 
 pub fn exec_instr(i: Instr, cpu: &mut Cpu) -> Result<u16> {
     // Lookup opcode function
-    let instr_fn = OPCODE_FUNCTIONS
-        .get(&i.op)
-        .map(|f: &OpcodeFn| *f)
-        .unwrap_or(invalid_op);
-
     // Run instruction, return # of extra cycles needed
-    Ok(instr_fn(i.mode, cpu)?)
+    lookup_opcode_fn(i.op)(i.mode, cpu)
 }
 
 fn invalid_op(am: AddressingMode, _: &mut Cpu) -> Result<u16> {

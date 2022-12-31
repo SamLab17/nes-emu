@@ -10,7 +10,7 @@ use crate::error::Result;
 use crate::mem::bus::MemoryBus;
 use crate::mem::bus::MemoryBusBuilder;
 use crate::mem::utils::make_address;
-use crate::ppu::ppu::{Frame, PatternTable};
+use crate::ppu::ppu::{Frame, PatternTable, OamSprite};
 
 pub const STACK_OFFSET: u16 = 0x100;
 
@@ -37,14 +37,14 @@ impl Interrupt {
     }
 }
 
-const NUM_TICKS_PER_CPU_CYCLE: u8 = 3;
+const NUM_TICKS_PER_CPU_CYCLE: u16 = 3;
 
 pub struct Cpu {
     pub reg: Registers,
     bus: MemoryBus,
     pub interrupt: Option<Interrupt>,
     cycles_left: u16, // Cycles left before next instruction
-    ticks_left: u8, // Ticks left before next CPU cycle
+    ticks_left: u16, // Ticks left before next CPU cycle
     num_cpu_cycles: u64, // Number of CPU cycles elapsed
     num_system_ticks: u64 // Number of system ticks elapsed
 }
@@ -58,7 +58,7 @@ impl Cpu {
                 ..Registers::default()
             },
             bus: MemoryBusBuilder::new().with_cart(cart).with_controllers(controller1, controller2).build(),
-            interrupt: Some(Interrupt::Reset),
+            interrupt: None,
             cycles_left: 0,
             ticks_left: 0,
             num_cpu_cycles: 0,
@@ -176,9 +176,8 @@ impl Cpu {
     }
 
     pub fn system_tick(&mut self, log: Option<&mut String>) -> Result<Option<Frame>> {
-        self.num_system_ticks += 1;
-
-        if self.ticks_left == 0 {
+        // if self.ticks_left == 0 {
+        if self.num_system_ticks % 3 == 0 {
             self.cycle(log)?;
             self.ticks_left = NUM_TICKS_PER_CPU_CYCLE;
         }
@@ -187,6 +186,7 @@ impl Cpu {
         let (frame, int) = self.bus.ppu.tick()?;
         self.interrupt = int;
 
+        self.num_system_ticks += 1;
         Ok(frame)
     }
 
@@ -214,7 +214,7 @@ impl Cpu {
 
             self.cycles_left = 512;
             if self.num_cpu_cycles % 2 == 1 {
-                self.cycles_left += 1
+                self.num_cpu_cycles += 1
             }
 
             Ok(())
@@ -233,6 +233,10 @@ impl Cpu {
 
     pub fn debug_frame(&self) -> Frame {
         self.bus.ppu.buffer.clone()
+    }
+
+    pub fn debug_oam(&self) -> Vec<OamSprite> {
+        (0..64).map(|idx| self.bus.ppu.oam_read(idx)).collect::<Vec<OamSprite>>()
     }
 }
 

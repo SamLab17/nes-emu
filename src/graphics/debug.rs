@@ -20,12 +20,15 @@ pub struct DebugGraphics {
     font_texture: Texture,
     character_rects: [Rect; 256],
     show_nametable_boundaries: bool,
+    show_oam: bool,
     iscale: u32,
     curr_palette: u8,
 }
 
 impl NesGraphics for DebugGraphics {
     fn render_frame(&mut self, frame: Frame, cpu: &mut Cpu) -> Result<()> {
+        let frame = frame.borrow();
+
         self.canvas.set_draw_color(Color::BLACK);
         self.canvas.clear();
 
@@ -53,6 +56,16 @@ impl NesGraphics for DebugGraphics {
             for c in 0..32 {
                 self.canvas.draw_line(Point::new(c * 8 * s, 0), Point::new(c*8*s, h * s))?;
             }
+        }
+
+        if self.show_oam {
+            let oam = cpu
+            .debug_oam()
+            .into_iter()
+            .take(10)
+            .map(|sprite| format!("({}, {}) id: {:X}, attr: {:X}", sprite.x, sprite.y, sprite.id, sprite.attributes.0))
+            .fold(String::from("Sprites:\n"), |a, b| a + &b + "\n");
+            self.write_text(&oam, self.width() as i32 - 512, 200, Some(1.5), Color::WHITE)?;
         }
 
         // Draw Palette Tables
@@ -98,6 +111,9 @@ impl NesGraphics for DebugGraphics {
                 },
                 Event::KeyDown { keycode: Some(Keycode::N), .. } => {
                     self.show_nametable_boundaries = !self.show_nametable_boundaries;
+                }
+                Event::KeyDown { keycode: Some(Keycode::O), .. } => {
+                    self.show_oam = !self.show_oam;
                 }
                 _ => (),
             }
@@ -167,6 +183,7 @@ impl DebugGraphics {
             character_rects,
             curr_palette: 0,
             show_nametable_boundaries: false,
+            show_oam: true,
             iscale,
         }
     }
@@ -257,17 +274,17 @@ impl DebugGraphics {
                     Some(Rect::new(
                         curr_x,
                         curr_y,
-                        (Self::CHAR_WIDTH as f32 * s).round() as u32,
-                        (Self::CHAR_HEIGHT as f32 * s).round() as u32,
+                        (Self::CHAR_WIDTH as f32 * s).ceil() as u32,
+                        (Self::CHAR_HEIGHT as f32 * s).ceil() as u32,
                     )),
                 )?;
             }
 
             if *c == b'\n' {
-                curr_y += (Self::CHAR_HEIGHT + 1) * s as i32;
+                curr_y += ((Self::CHAR_WIDTH + 1) as f32 * s).ceil() as i32;
                 curr_x = x;
             } else {
-                curr_x += (Self::CHAR_WIDTH + 1) * s as i32;
+                curr_x += ((Self::CHAR_WIDTH + 1) as f32 * s).ceil() as i32;
             }
         }
         Ok(())

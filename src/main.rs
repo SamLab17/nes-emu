@@ -13,11 +13,11 @@ use crate::cart::builder::build_cartridge;
 use crate::controller::make_controller;
 use crate::graphics::graphics::GraphicsBuilder;
 use cpu::cpu::Cpu;
+use std::collections::VecDeque;
 use std::{error::Error, fs, path::Path};
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use std::time::Duration;
 use std::time::Instant;
 
 use clap::Parser;
@@ -61,6 +61,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut prev_time = Instant::now();
     let mut residual_time = 0.0;
     let mut paused = false;
+
+    let mut frame_times : VecDeque<Instant> = VecDeque::new();
 
     let mut num_frames = 0;
     // Main loop
@@ -122,6 +124,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 _ => {}
             }
         }
+        
         // Generate frame
         if !paused {
             let now = Instant::now();
@@ -131,11 +134,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             } else {
                 residual_time += (1.0 / FPS) - elapsed;
                 graphics.render_frame(cpu.next_frame()?, &mut cpu)?;
+                frame_times.push_back(Instant::now());
+                if frame_times.len() == 60 {
+                    frame_times.pop_front();
+                    // println!("FPS: {}", 1.0 / (*frame_times.back().unwrap() - *frame_times.front().unwrap()).as_secs_f64() * 60.0);
+                }
                 num_frames += 1;
             }
             prev_time = now;
         }
-        // prev_time = Instant::now();
     }
 
     let elapsed = (Instant::now() - start_time).as_millis();
