@@ -1,3 +1,6 @@
+use std::collections::VecDeque;
+use std::time::Instant;
+
 use crate::cpu::cpu::Cpu;
 use crate::cpu::isa::{Instr, Opcode, AddressingMode};
 use crate::error::Result;
@@ -22,8 +25,11 @@ pub struct DebugGraphics {
     show_nametable_boundaries: bool,
     show_oam: bool,
     iscale: u32,
+    frame_times: VecDeque<Instant>,
     curr_palette: u8,
 }
+
+const FPS_SAMPLE_SIZE: usize = 60;
 
 impl NesGraphics for DebugGraphics {
     fn render_frame(&mut self, frame: Frame, cpu: &mut Cpu) -> Result<()> {
@@ -31,6 +37,18 @@ impl NesGraphics for DebugGraphics {
 
         self.canvas.set_draw_color(Color::BLACK);
         self.canvas.clear();
+
+        self.frame_times.push_back(Instant::now());
+        if self.frame_times.len() == FPS_SAMPLE_SIZE {
+            self.frame_times.pop_front();
+            let fps = 1.0 / (*self.frame_times.back().unwrap() - *self.frame_times.front().unwrap()).as_secs_f64() * (FPS_SAMPLE_SIZE as f64);
+            let color = if fps <= 55.0 {
+                Color::RED
+            } else {
+                Color::WHITE
+            };
+            self.write_text(&format!("FPS: {}", fps.round()), self.width() as i32 - 500, 128, Some(2.0), color)?;
+        }
 
         // Draw NES graphics
         for r in 0..frame.len() {
@@ -65,7 +83,7 @@ impl NesGraphics for DebugGraphics {
             .take(10)
             .map(|sprite| format!("({}, {}) id: {:X}, attr: {:X}", sprite.x, sprite.y, sprite.id, sprite.attributes.0))
             .fold(String::from("Sprites:\n"), |a, b| a + &b + "\n");
-            self.write_text(&oam, self.width() as i32 - 512, 200, Some(1.5), Color::WHITE)?;
+            self.write_text(&oam, self.width() as i32 - 500, 200, Some(1.5), Color::WHITE)?;
         }
 
         // Draw Palette Tables
@@ -87,16 +105,16 @@ impl NesGraphics for DebugGraphics {
         )?;
         self.draw_palettes(&palettes)?;
         let pal_str = format!("Palette: {}", self.curr_palette);
-        self.write_text(&pal_str, self.width() as i32 - 512, self.height() as i32 - 280, Some(2.0), Color::WHITE)?;
+        self.write_text(&pal_str, self.width() as i32 - 500, self.height() as i32 - 280, Some(2.0), Color::WHITE)?;
 
         let reg_str = format!("{}", cpu.reg);
-        self.write_text(&reg_str, self.width() as i32 - 512, 0, Some(1.5), Color::WHITE)?;
+        self.write_text(&reg_str, self.width() as i32 - 500, 2, Some(1.5), Color::WHITE)?;
 
         let (pc0, i0) = cpu.peek_next_instr(0).unwrap_or((0, Instr{op: Opcode::NOP, mode: AddressingMode::Implied}));
         let (pc1, i1) = cpu.peek_next_instr(1).unwrap_or((0, Instr{op: Opcode::NOP, mode: AddressingMode::Implied}));
         let (pc2, i2) = cpu.peek_next_instr(2).unwrap_or((0, Instr{op: Opcode::NOP, mode: AddressingMode::Implied}));
         let i_str = format!("{:04X}: {}\n{:04X}: {}\n{:04X}: {}", pc0, i0, pc1, i1, pc2, i2);
-        self.write_text(&i_str, self.width() as i32 - 512, 32, Some(2.0), Color::WHITE)?;
+        self.write_text(&i_str, self.width() as i32 - 500, 32, Some(2.0), Color::WHITE)?;
 
         self.canvas.present();
         Ok(())
@@ -184,6 +202,7 @@ impl DebugGraphics {
             curr_palette: 0,
             show_nametable_boundaries: false,
             show_oam: true,
+            frame_times: VecDeque::new(),
             iscale,
         }
     }
