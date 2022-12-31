@@ -18,7 +18,6 @@ pub struct SimpleGraphics {
 
 impl NesGraphics for SimpleGraphics {
     fn render_frame(&mut self, frame: Frame, _cpu: &mut Cpu) -> Result<()> {
-        let frame = frame.borrow();
         for r in 0..frame.len() {
             for c in 0..frame[r].len() {
                 self.canvas.set_draw_color(frame[r][c]);

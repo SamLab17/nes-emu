@@ -3,9 +3,10 @@ use std::fmt::{Debug};
 use std::fmt;
 
 use crate::error::Result;
+use crate::ines::parse::MirrorType;
 
 pub enum PpuMemoryError {
-    // PpuReadOnly(u16),
+    PpuReadOnly(u16),
     // PpuWriteOnly(u16),
     PpuInvalidAddress(u16)
 }
@@ -15,7 +16,7 @@ impl Error for PpuMemoryError {}
 impl fmt::Display for PpuMemoryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            // PpuMemoryError::PpuReadOnly(a) => write!(f, "PpuReadOnly(0x{:X})", *a),
+            PpuMemoryError::PpuReadOnly(a) => write!(f, "PpuReadOnly(0x{:X})", *a),
             // PpuMemoryError::PpuWriteOnly(a) => write!(f, "PpuWriteOnly(0x{:X})", *a),
             PpuMemoryError::PpuInvalidAddress(a) => write!(f, "PpuInvalidAddress(0x{:X})", *a),
         }
@@ -28,9 +29,9 @@ impl fmt::Debug for PpuMemoryError {
     }
 }
 
-// pub fn ppu_rd_only(addr: u16) -> Box<dyn Error> {
-//     Box::new(PpuMemoryError::PpuReadOnly(addr))
-// }
+pub fn ppu_rd_only(addr: u16) -> Box<dyn Error> {
+    Box::new(PpuMemoryError::PpuReadOnly(addr))
+}
 
 // pub fn ppu_wr_only(addr: u16) -> Box<dyn Error> {
 //     Box::new(PpuMemoryError::PpuWriteOnly(addr))
@@ -55,3 +56,40 @@ impl Debug for dyn Cart {
 }
 
 pub type Cartridge = Box<dyn Cart + 'static>;
+
+/*
+Nametable numbers:
+          |
+     00   |   01
+  -----------------
+     10  |   11
+         |
+
+Nametable Address:
+NNOO OOOO OOOO
+N = nametable number
+O = offset
+*/
+pub fn nametable_addr(mut addr: u16, mirror_type: MirrorType) -> u16 {
+    addr &= 0xFFF;
+    match mirror_type {
+        MirrorType::Vertical => match addr {
+            0x000..=0x3FF | 0x800..=0xBFF => addr & 0x3FF,
+            0x400..=0x7FF | 0xC00..=0xFFF => (addr & 0x3FF) | 0x400,
+            _ => panic!("impossible"),
+        },
+        MirrorType::Horizontal => match addr {
+            0x000..=0x7FF => addr & 0x3FF,
+            0x800..=0xFFF => (addr & 0x3FF) | 0x400,
+            _ => panic!("impossible"),
+        },
+        MirrorType::OneScreenLow => match addr {
+            0x000..=0xFFF => addr & 0x3FF,
+            _ => panic!("impossible"),
+        },
+        MirrorType::OneScreenHigh => match addr {
+            0x000..=0xFFF => (addr & 0x3FF) | 0x400,
+            _ => panic!("impossible"),
+        },
+    }
+}

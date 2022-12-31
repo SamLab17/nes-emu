@@ -1,4 +1,4 @@
-use super::cart::{ppu_inv_addr, Cart, Cartridge};
+use super::cart::{ppu_inv_addr, Cart, Cartridge, ppu_rd_only, nametable_addr};
 
 use crate::error::Result;
 use crate::ines::parse::MirrorType;
@@ -10,35 +10,6 @@ pub struct Nrom128 {
     prg_ram: [u8; 8 * 1024],
     chr_rom: [u8; 8 * 1024],
     mirroring: MirrorType,
-}
-
-/*
-Nametable numbers:
-          |
-     00   |   01
-  -----------------
-     10  |   11
-         |
-
-Nametable Address:
-NNOO OOOO OOOO
-N = nametable number
-O = offset
-*/
-fn nametable_addr(mut addr: u16, mirror_type: MirrorType) -> u16 {
-    addr &= 0xFFF;
-    match mirror_type {
-        MirrorType::Vertical => match addr {
-            0x000..=0x3FF | 0x800..=0xBFF => addr & 0x3FF,
-            0x400..=0x7FF | 0xC00..=0xFFF => (addr & 0x3FF) | 0x400,
-            _ => panic!("impossible"),
-        },
-        MirrorType::Horizontal => match addr {
-            0x000..=0x7FF => addr & 0x3FF,
-            0x800..=0xFFF => (addr & 0x3FF) | 0x400,
-            _ => panic!("impossible"),
-        },
-    }
 }
 
 impl Cart for Nrom128 {
@@ -73,7 +44,7 @@ impl Cart for Nrom128 {
 
     fn ppu_write(&mut self, addr: u16, byte: u8, vram: &mut [u8]) -> Result<()> {
         match addr {
-            0x0000..=0x1FFF => Ok(self.chr_rom[addr as usize] = byte),
+            0x0000..=0x1FFF => Err(ppu_rd_only(addr)),
             0x2000..=0x3EFF => Ok(vram[nametable_addr(addr, self.mirroring) as usize] = byte),
             _ => Err(ppu_inv_addr(addr)),
         }
@@ -105,8 +76,7 @@ impl Cart for Nrom256 {
         match addr {
             0x6000..=0x7FFF => Ok(self.prg_ram[((addr - 0x6000) as usize)] = byte),
             0x8000..=0xFFFF => {
-                self.prg_rom[(addr & 0x7FFF) as usize] = byte;
-                Ok(())
+                Err(rd_only(addr))
             }
             _ => Err(inv_addr(addr)),
         }
@@ -121,7 +91,7 @@ impl Cart for Nrom256 {
 
     fn ppu_write(&mut self, addr: u16, byte: u8, vram: &mut [u8]) -> Result<()> {
         match addr {
-            0x0000..=0x1FFF => Ok(self.chr_rom[addr as usize] = byte),
+            0x0000..=0x1FFF => Err(ppu_rd_only(addr)),
             0x2000..=0x3EFF => Ok(vram[nametable_addr(addr, self.mirroring) as usize] = byte),
             _ => Err(ppu_inv_addr(addr)),
         }
@@ -155,7 +125,7 @@ pub fn build_nrom_cart(prg_rom: &[u8], chr_rom: &[u8], mirroring: MirrorType) ->
 #[cfg(test)]
 mod nrom_tests {
     use super::build_nrom_cart;
-    use crate::{cart::nrom::nametable_addr, ines::parse::MirrorType};
+    use crate::{cart::mapper0::nametable_addr, ines::parse::MirrorType};
 
     #[test]
     fn test_build() {

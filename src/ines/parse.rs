@@ -15,6 +15,9 @@ use derive_try_from_primitive::TryFromPrimitive;
 pub enum MirrorType {
     Horizontal = 0,
     Vertical = 1,
+    // These aren't found in iNES files, but used elsewhere
+    OneScreenLow = 2,
+    OneScreenHigh = 3,
 }
 
 #[derive(Debug)]

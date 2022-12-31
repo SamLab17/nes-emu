@@ -38,9 +38,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let ines_rom = INesFile::try_from(&rom).expect("Path provided is not a valid NES ROM.");
 
     let controller = make_controller();
+    let cart = build_cartridge(&ines_rom).expect("This ROM is not supported.");
+
+    if args.debug {
+        println!("{:#X?}", ines_rom.header);
+        println!("Cartridge type: {}", cart.name());
+    }
 
     let mut cpu = Cpu::new(
-        build_cartridge(&ines_rom).expect("This ROM is not supported."),
+        cart, 
         Some(controller.clone()),
         None,
     );
@@ -54,7 +60,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut running = true;
 
-    const FPS: f64 = 60.0;
+    const FPS: f64 = 59.0;
 
     let mut prev_time = Instant::now();
     let mut residual_time = 0.0;
@@ -130,8 +136,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 residual_time += (1.0 / FPS) - elapsed;
                 graphics.render_frame(cpu.next_frame()?, &mut cpu)?;
             }
-            prev_time = now;
+            prev_time = now; 
         }
+
     }
 
     Ok(())

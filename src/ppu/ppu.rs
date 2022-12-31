@@ -11,7 +11,7 @@ use sdl2::pixels::Color;
 
 use super::colors::{load_color_map, ColorMap};
 
-pub type Frame = Rc<RefCell<Box<[[Color; 256]; 240]>>>;
+pub type Frame = Box<[[Color; 256]; 240]>;
 pub type PatternTable = Box<[[Color; 128]; 128]>;
 
 fn set_low_byte(x: &mut u16, lsb: u8) {
@@ -37,7 +37,7 @@ bitfield! {
     u8;
     get_greyscale, set_greyscale: 0;
     get_show_bg_left, set_show_bg_left: 1;
-    get_show_sprits_left, set_show_sprites_left: 2;
+    get_show_sprites_left, set_show_sprites_left: 2;
     get_show_bg, set_show_bg : 3;
     get_show_sprites, set_show_sprites: 4;
     get_emph_red, set_emph_red: 5;
@@ -165,7 +165,7 @@ impl PpuBuilder {
             odd_frame: false,
             cycle: 0,
             scanline: 0,
-            buffer: Rc::new(RefCell::new(Box::new([[Color::BLACK; 256]; 240]))),
+            buffer: Box::new([[Color::BLACK; 256]; 240]),
             bg: BackgroundState::default(),
             fg: ForegroundState::default()
             // buffer: [[Color::BLACK; 256]; 240]
@@ -431,7 +431,7 @@ impl Ppu {
         let mut pixel = 0;
         let mut palette = 0;
         let mut bg = true;
-        if self.reg.mask.get_show_bg() {
+        if self.reg.mask.get_show_bg() && (self.reg.mask.get_show_bg_left() || (9..258).contains(&self.cycle)) {
             use bit::BitIndex;
             let bit_pos = 15 - (self.reg.fine_x as usize);
             let pixel0 = self.bg.shift_pattern_lsb.bit(bit_pos) as u8;
@@ -445,7 +445,7 @@ impl Ppu {
             // println!("{palette:?} {pixel:?} {color:?}");
         }
 
-        if self.reg.mask.get_show_sprites() {
+        if self.reg.mask.get_show_sprites() && (self.reg.mask.get_show_sprites_left() || (9..258).contains(&self.cycle)) {
             let mut sprite_pixel = 0;
             let mut sprite_palette = 0;
             let mut bg_priority = false;
@@ -466,7 +466,7 @@ impl Ppu {
             // Priority rules
             let bg_transparent = pixel == 0;
             let sprite_transparent = sprite_pixel == 0;
-            if bg_transparent {
+            if bg_transparent && !sprite_transparent {
                 pixel = sprite_pixel;
                 palette = sprite_palette;
                 bg = false;
@@ -481,7 +481,7 @@ impl Ppu {
                 // Check for sprite zero collision
                 // if sprite_zero && self.reg.mask.get_show_bg() && self.reg.mask.get_show_sprites() && !self.fg.sprite_zero_hit {
                 if sprite_zero && self.reg.mask.get_show_bg() && self.reg.mask.get_show_sprites() { 
-                    if !self.reg.mask.get_show_bg_left() || !self.reg.mask.get_show_sprits_left() {
+                    if !self.reg.mask.get_show_bg_left() || !self.reg.mask.get_show_sprites_left() {
                         if (9..258).contains(&self.cycle) {
                             self.reg.status.set_sprite_zero_hit(true);
                             self.fg.sprite_zero_hit = true;
@@ -501,8 +501,8 @@ impl Ppu {
         if self.cycle > 0  && self.rendering_enabled() {
             let row = self.scanline as usize;
             let col = (self.cycle - 1) as usize;
-            if row < self.buffer.borrow().len() && col < self.buffer.borrow()[row].len() {
-                self.buffer.borrow_mut()[row][col] = self.get_color(palette, pixel, bg)?;
+            if row < self.buffer.len() && col < self.buffer[row].len() {
+                self.buffer[row][col] = self.get_color(palette, pixel, bg)?;
             }
         }
 
@@ -741,15 +741,24 @@ impl Ppu {
                 // _not_ flipped. (If flipped then we keep c as is)
                 c = 7 - c;
             }
+            let mut id = (sprite.id & 0xFE) as u16;
+            if sprite.attributes.get_flip_vertical() != (r > 7)  {
+                // If EITHER flipped or in second half of rows, then we go to the next tile
+                // (not both, i.e. XOR)
+                id += 1;
+            }
+
             if sprite.attributes.get_flip_vertical() {
                 r = 15 - r;
             }
+            r &= 0x7;
 
             let pattern_base = ((sprite.id & 1) as u16) << 12;
 
             let tile_addr_lo = pattern_base 
-                                | ((sprite.id & 0xFE) as u16 * 16)      // Each pattern is 16 bytes
-                                | (r as u16);                         // Row offset
+                                | (id * 16)      // Each pattern is 16 bytes
+                                | (r as u16);   // Row offset
+
             let tile_addr_hi = tile_addr_lo + 8;
             let lo = self.ppu_read(tile_addr_lo)?;
             let hi = self.ppu_read(tile_addr_hi)?;
@@ -767,8 +776,8 @@ impl Ppu {
                 r = 7 - r;
             }
             let tile_addr_lo = pattern_base 
-                                | (sprite.id as u16 * 16) // Each pattern is 16 bytes
-                                | (r as u16);           // Row offset
+                                + (sprite.id as u16 * 16) // Each pattern is 16 bytes
+                                + (r as u16);           // Row offset
             let tile_addr_hi = tile_addr_lo + 8;
             let lo = self.ppu_read(tile_addr_lo)?;
             let hi = self.ppu_read(tile_addr_hi)?;

@@ -29,26 +29,12 @@ pub struct DebugGraphics {
     curr_palette: u8,
 }
 
-const FPS_SAMPLE_SIZE: usize = 60;
+const FPS_SAMPLE_SIZE: usize = 120;
 
 impl NesGraphics for DebugGraphics {
     fn render_frame(&mut self, frame: Frame, cpu: &mut Cpu) -> Result<()> {
-        let frame = frame.borrow();
-
         self.canvas.set_draw_color(Color::BLACK);
         self.canvas.clear();
-
-        self.frame_times.push_back(Instant::now());
-        if self.frame_times.len() == FPS_SAMPLE_SIZE {
-            self.frame_times.pop_front();
-            let fps = 1.0 / (*self.frame_times.back().unwrap() - *self.frame_times.front().unwrap()).as_secs_f64() * (FPS_SAMPLE_SIZE as f64);
-            let color = if fps <= 55.0 {
-                Color::RED
-            } else {
-                Color::WHITE
-            };
-            self.write_text(&format!("FPS: {}", fps.round()), self.width() as i32 - 500, 128, Some(2.0), color)?;
-        }
 
         // Draw NES graphics
         for r in 0..frame.len() {
@@ -115,6 +101,18 @@ impl NesGraphics for DebugGraphics {
         let (pc2, i2) = cpu.peek_next_instr(2).unwrap_or((0, Instr{op: Opcode::NOP, mode: AddressingMode::Implied}));
         let i_str = format!("{:04X}: {}\n{:04X}: {}\n{:04X}: {}", pc0, i0, pc1, i1, pc2, i2);
         self.write_text(&i_str, self.width() as i32 - 500, 32, Some(2.0), Color::WHITE)?;
+
+        self.frame_times.push_back(Instant::now());
+        if self.frame_times.len() == FPS_SAMPLE_SIZE {
+            self.frame_times.pop_front();
+            let fps = 1.0 / (*self.frame_times.back().unwrap() - *self.frame_times.front().unwrap()).as_secs_f64() * (FPS_SAMPLE_SIZE as f64);
+            let color = match fps.round() as u16 {
+                0..=50 => Color::RED,
+                51..=59 => Color::YELLOW,
+                60.. => Color::WHITE
+            };
+            self.write_text(&format!("FPS: {}", fps.round()), self.width() as i32 - 500, 128, Some(2.0), color)?;
+        }
 
         self.canvas.present();
         Ok(())
