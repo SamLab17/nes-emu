@@ -133,11 +133,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                 residual_time -= elapsed;
             } else {
                 residual_time += (1.0 / FPS) - elapsed;
-                graphics.render_frame(cpu.next_frame()?, &mut cpu)?;
+                let frame = cpu.next_frame()?;
+                graphics.render_frame(frame, &mut cpu)?;
                 frame_times.push_back(Instant::now());
                 if frame_times.len() == 60 {
                     frame_times.pop_front();
-                    // println!("FPS: {}", 1.0 / (*frame_times.back().unwrap() - *frame_times.front().unwrap()).as_secs_f64() * 60.0);
+                    println!("FPS: {}", 1.0 / (*frame_times.back().unwrap() - *frame_times.front().unwrap()).as_secs_f64() * 60.0);
                 }
                 num_frames += 1;
             }

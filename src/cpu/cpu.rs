@@ -176,15 +176,16 @@ impl Cpu {
     }
 
     pub fn system_tick(&mut self, log: Option<&mut String>) -> Result<Option<Frame>> {
-        // if self.ticks_left == 0 {
-        if self.num_system_ticks % 3 == 0 {
+        if self.ticks_left == 0 {
             self.cycle(log)?;
             self.ticks_left = NUM_TICKS_PER_CPU_CYCLE;
         }
         self.ticks_left -= 1;
 
         let (frame, int) = self.bus.ppu.tick()?;
-        self.interrupt = int;
+        if int.is_some() {
+            self.interrupt = int;
+        }
 
         self.num_system_ticks += 1;
         Ok(frame)
