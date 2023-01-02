@@ -24,6 +24,7 @@ pub struct DebugGraphics {
     curr_palette: u8,
 }
 
+// How many frame times to use when averaging the current FPS
 const FPS_SAMPLE_SIZE: usize = 60;
 
 impl NesGraphics for DebugGraphics {

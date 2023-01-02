@@ -74,7 +74,7 @@ impl Cpu {
             ticks_left: 0,
             num_cpu_cycles: 0,
             num_system_ticks: 0,
-            sample_freq: audio_sample_freq ,
+            sample_freq: audio_sample_freq,
             audio_time: 0.0,
         }
     }
@@ -91,7 +91,7 @@ impl Cpu {
             num_cpu_cycles: 0,
             num_system_ticks: 0,
             sample_freq: 0.0,
-            audio_time: 0.0
+            audio_time: 0.0,
         }
     }
 
@@ -190,7 +190,10 @@ impl Cpu {
         Ok(())
     }
 
-    pub fn system_tick(&mut self, log: Option<&mut String>) -> Result<(Option<Frame>, Option<f64>)> {
+    pub fn system_tick(
+        &mut self,
+        log: Option<&mut String>,
+    ) -> Result<(Option<Frame>, Option<f64>)> {
         if self.ticks_left == 0 {
             self.cycle(log)?;
             self.ticks_left = NUM_TICKS_PER_CPU_CYCLE;
@@ -205,8 +208,8 @@ impl Cpu {
         // Tick APU
         let mut ret_audio = None;
         let time_per_system_tick = 1.0 / 5369318.0;
-        let time_per_sample = 1.0 / self.sample_freq ;
-        self.audio_time += time_per_system_tick; 
+        let time_per_sample = 1.0 / self.sample_freq;
+        self.audio_time += time_per_system_tick;
         if self.audio_time >= time_per_sample {
             self.audio_time -= time_per_sample;
             // TODO: get audio sample from APU instead
@@ -217,13 +220,14 @@ impl Cpu {
         Ok((ret_frame, ret_audio))
     }
 
-    // pub fn next_frame(&mut self) -> Result<Frame> {
-    //     loop {
-    //         if let Some(frame) = self.system_tick(None)? {
-    //             return Ok(frame);
-    //         }
-    //     }
-    // }
+    #[allow(dead_code)] // Used for benchmarking
+    pub fn next_frame(&mut self) -> Result<Frame> {
+        loop {
+            if let (Some(frame), _) = self.system_tick(None)? {
+                return Ok(frame);
+            }
+        }
+    }
 
     pub fn read(&mut self, addr: u16) -> Result<u8> {
         self.bus.read(addr)
@@ -250,12 +254,8 @@ impl Cpu {
         }
     }
 
-    pub fn debug_pattern_tables(
-        &mut self,
-        palette: u8,
-        bg: bool,
-    ) -> Result<(PatternTable, PatternTable)> {
-        self.bus.ppu.debug_pattern_tables(palette, bg)
+    pub fn debug_pattern_tables(&mut self) -> Result<(PatternTable, PatternTable)> {
+        self.bus.ppu.debug_pattern_tables()
     }
 
     pub fn debug_palettes(&mut self) -> Vec<Vec<Color>> {
@@ -274,13 +274,15 @@ impl Cpu {
         for off in 0..NUM_INSTR {
             match self.peek_next_instr(off) {
                 Ok((addr, i)) => instr.push((addr, i)),
-                Err(_) => {break;}
+                Err(_) => {
+                    break;
+                }
             }
         }
         CpuInfo {
             sprites: self.debug_oam(),
             palettes: self.debug_palettes(),
-            pattern_tables: self.debug_pattern_tables(0, true).unwrap(),
+            pattern_tables: self.debug_pattern_tables().unwrap(),
             instructions: instr,
             registers: self.reg.clone(),
         }

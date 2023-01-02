@@ -816,8 +816,6 @@ impl Ppu {
 
     pub fn debug_pattern_tables(
         &mut self,
-        palette: u8,
-        bg: bool,
     ) -> Result<(PatternTable, PatternTable)> {
         use bit::BitIndex;
         let mut pat0: PatternTable = Box::new([[0; 128]; 128]);

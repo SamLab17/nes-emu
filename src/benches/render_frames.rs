@@ -12,12 +12,13 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     let mut cpu = Cpu::new(
         build_cartridge(&ines_rom).expect("This ROM is not supported."),
+        44100.0,
         None,
         None,
     );
+    cpu.reset().unwrap();
     let mut group = c.benchmark_group("cpu");
     group.measurement_time(Duration::from_secs(10));
-    // c.measurement_time(Duration::from_secs(10));
     group.bench_function("next_frame", |b| b.iter(|| cpu.next_frame().unwrap()));
 }
 

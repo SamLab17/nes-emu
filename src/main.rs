@@ -125,10 +125,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }).unwrap();
     
     let mut running = true;
-    // const FPS: f64 = 59.0;
 
-    // let mut prev_time = Instant::now();
-    // let mut residual_time = 0.0;
     let mut paused = false;
     device.resume();
 
@@ -175,9 +172,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             Err(TryRecvError::Empty) => Ok(()),
             Err(e) => Err(e.into())
         }?;
-        // let (frame, info) = rcv.recv()?;
-        // println!("received frame");
-        // graphics.render_frame(frame, info)?;
     }
 
     device.close_and_get_callback();

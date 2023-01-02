@@ -312,17 +312,18 @@ fn bpl(am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
 }
 
 fn brk(_am: AddressingMode, cpu: &mut Cpu) -> Result<u16> {
-    panic!("BRK");
-    // push_stack_addr(cpu, cpu.reg.pc + 2)?;
+    // panic!("BRK");
+    push_stack_addr(cpu, cpu.reg.pc + 2)?;
 
-    // cpu.reg.status.insert(StatusFlags::INTERRUPT_DISABLE);
+    cpu.reg.status.insert(StatusFlags::INTERRUPT_DISABLE);
 
-    // let mut flags = cpu.reg.status.clone();
-    // flags.insert(StatusFlags::BREAK);
-    // push_stack(cpu, cpu.reg.status.bits())?;
+    let mut flags = cpu.reg.status.clone();
+    flags.insert(StatusFlags::BREAK);
+    push_stack(cpu, cpu.reg.status.bits())?;
 
-    // cpu.reg.pc = make_address(cpu.read(0xFFFE)?, cpu.read(0xFFFF)?);
-    cpu.interrupt = Some(super::cpu::Interrupt::Request);
+    cpu.reg.pc = make_address(cpu.read(0xFFFE)?, cpu.read(0xFFFF)?);
+    // No need to set interrupt field here, we've already handled it
+    // cpu.interrupt = Some(super::cpu::Interrupt::Request);
 
     Ok(0)
 }
