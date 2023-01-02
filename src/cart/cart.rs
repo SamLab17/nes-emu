@@ -43,13 +43,13 @@ pub trait Cart {
     fn ppu_write(&mut self, addr: u16, byte: u8, vram: &mut [u8]) -> Result<()>; 
 }
 
-impl Debug for dyn Cart {
+impl Debug for dyn Cart + Send {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Cart: {}", self.name())
     }
 }
 
-pub type Cartridge = Box<dyn Cart + 'static>;
+pub type Cartridge = Box<dyn Cart + 'static + Send>;
 
 /*
 Nametable numbers:

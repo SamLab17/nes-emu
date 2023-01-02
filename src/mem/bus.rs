@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use crate::cart::mock::mock_cart;
 use crate::controller::ControllerRef;
@@ -13,7 +14,7 @@ use crate::cart::cart::Cartridge;
 pub struct MemoryBus {
     ram: Ram,
     pub ppu: Ppu,
-    pub cart: Rc<RefCell<Cartridge>>,
+    pub cart: Arc<Mutex<Cartridge>>,
     p1: Option<ControllerRef>,
     p2: Option<ControllerRef>
 }
@@ -52,7 +53,7 @@ impl MemoryBusBuilder {
     }
 
     pub fn build(self) -> MemoryBus {
-        let cart = Rc::new(RefCell::new(self.cart.unwrap_or_else(|| mock_cart())));
+        let cart = Arc::new(Mutex::new(self.cart.unwrap_or_else(|| mock_cart())));
         MemoryBus {
             ram: self.ram.unwrap_or_default(),
             ppu: PpuBuilder::new(cart.clone()).build().unwrap(),
@@ -71,20 +72,21 @@ impl MemoryBus {
             0x4000..=0x4015 => Ok(0), 
             0x4016 => {
                 if let Some(p1) = self.p1.as_ref() {
-                    Ok(p1.borrow_mut().read())
+                    Ok(p1.lock().unwrap().read())
+                    // Ok(p1.borrow_mut().read())
                 } else {
                     Ok(0)
                 }
             }
             0x4017 => {
                 if let Some(p2) = self.p2.as_ref() {
-                    Ok(p2.borrow_mut().read())
+                    Ok(p2.lock().unwrap().read())
                 } else {
                     Ok(0)
                 }
             }
             0x4020..=0xFFFF => {
-                self.cart.borrow_mut().read(addr)
+                self.cart.lock().unwrap().read(addr)
             },
             _ => Err(inv_addr(addr)),
         }
@@ -96,18 +98,18 @@ impl MemoryBus {
             0x2000..=0x3FFF => self.ppu.write(addr, byte),
             0x4016 => {
                 if let Some(p1) = self.p1.as_ref() {
-                    p1.borrow_mut().write(byte);
+                    p1.lock().unwrap().write(byte);
                 }
                 Ok(())
             },
             0x4017 => {
                 if let Some(p2) = self.p2.as_ref() {
-                    p2.borrow_mut().write(byte);
+                    p2.lock().unwrap().write(byte);
                 }
                 Ok(())
             }
             0x4000..=0x4015 => Ok(()),
-            0x4020..=0xFFFF => self.cart.borrow_mut().write(addr, byte),
+            0x4020..=0xFFFF => self.cart.lock().unwrap().write(addr, byte),
             _ => Err(inv_addr(addr)),
         }
     }

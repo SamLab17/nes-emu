@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use bitfield::bitfield;
 
@@ -12,7 +13,7 @@ use sdl2::pixels::Color;
 use super::colors::{load_color_map, ColorMap};
 
 pub type Frame = Box<[[Color; 256]; 240]>;
-pub type PatternTable = Box<[[Color; 128]; 128]>;
+pub type PatternTable = Box<[[u8; 128]; 128]>;
 
 fn set_low_byte(x: &mut u16, lsb: u8) {
     *x = (*x & 0xFF00) | (lsb as u16)
@@ -138,11 +139,11 @@ pub struct OamSprite {
 
 pub struct PpuBuilder {
     palette_file: Option<String>,
-    cart: Rc<RefCell<Cartridge>>,
+    cart: Arc<Mutex<Cartridge>>,
 }
 
 impl PpuBuilder {
-    pub fn new(cart: Rc<RefCell<Cartridge>>) -> Self {
+    pub fn new(cart: Arc<Mutex<Cartridge>>) -> Self {
         PpuBuilder {
             palette_file: None,
             cart,
@@ -176,7 +177,7 @@ impl PpuBuilder {
 #[derive(Debug)]
 pub struct Ppu {
     pub buffer: Frame,
-    cart: Rc<RefCell<Cartridge>>,
+    cart: Arc<Mutex<Cartridge>>,
     color_map: ColorMap,
     vram: [u8; 1024 * 2],
     oam: [u8; 256],
@@ -329,7 +330,9 @@ impl Ppu {
 
     fn ppu_read(&self, addr: u16) -> Result<u8> {
         match addr {
-            0x0000..=0x3EFF => self.cart.borrow_mut().ppu_read(addr, &self.vram),
+            0x0000..=0x3EFF => {
+                self.cart.try_lock().unwrap().ppu_read(addr, &self.vram)
+            },
             0x3F00..=0x3FFF => Ok(self.palettes[self.map_palette_addr(addr)]),
             _ => Err(inv_addr(addr)),
         }
@@ -337,7 +340,7 @@ impl Ppu {
 
     fn ppu_write(&mut self, addr: u16, byte: u8) -> Result<()> {
         match addr {
-            0x0000..=0x3EFF => self.cart.borrow_mut().ppu_write(addr, byte, &mut self.vram),
+            0x0000..=0x3EFF => self.cart.try_lock().unwrap().ppu_write(addr, byte, &mut self.vram),
             0x3F00..=0x3FFF => {
                 self.palettes[self.map_palette_addr(addr)] = byte;
                 Ok(())
@@ -817,8 +820,8 @@ impl Ppu {
         bg: bool,
     ) -> Result<(PatternTable, PatternTable)> {
         use bit::BitIndex;
-        let mut pat0: PatternTable = Box::new([[Color::BLACK; 128]; 128]);
-        let mut pat1: PatternTable = Box::new([[Color::BLACK; 128]; 128]);
+        let mut pat0: PatternTable = Box::new([[0; 128]; 128]);
+        let mut pat1: PatternTable = Box::new([[0; 128]; 128]);
 
         for tile in 0..256 {
             let lo_plane0_addr = tile * 16;
@@ -837,12 +840,10 @@ impl Ppu {
                 for col in 0..8u16 {
                     let pixel0 =
                         ((hi0.bit(7 - col as usize) as u8) << 1) | lo0.bit(7 - col as usize) as u8;
-                    pat0[(tile_y + row) as usize][(tile_x + col) as usize] =
-                        self.get_color(palette, pixel0, bg)?;
+                    pat0[(tile_y + row) as usize][(tile_x + col) as usize] = pixel0;
                     let pixel1 =
                         ((hi1.bit(7 - col as usize) as u8) << 1) | lo1.bit(7 - col as usize) as u8;
-                    pat1[(tile_y + row) as usize][(tile_x + col) as usize] =
-                        self.get_color(palette, pixel1, bg)?;
+                    pat1[(tile_y + row) as usize][(tile_x + col) as usize] = pixel1;
                 }
             }
         }

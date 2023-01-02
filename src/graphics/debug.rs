@@ -1,25 +1,20 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 
-use crate::cpu::cpu::Cpu;
-use crate::cpu::isa::{Instr, Opcode, AddressingMode};
 use crate::error::Result;
-use nes_emu::ppu::ppu::Frame;
-use sdl2::event::Event;
+use crate::ppu::ppu::Frame;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
-use sdl2::rect::{Rect, Point};
+use sdl2::rect::{Point, Rect};
 use sdl2::render::{Canvas, Texture};
 use sdl2::surface::Surface;
 use sdl2::video::Window;
-use sdl2::{EventPump, Sdl};
+use sdl2::VideoSubsystem;
 
-use super::graphics::NesGraphics;
+use super::graphics::{CpuInfo, NesGraphics};
 
 pub struct DebugGraphics {
-    context: Sdl,
     canvas: Canvas<Window>,
-    event_pump: EventPump,
     font_texture: Texture,
     character_rects: [Rect; 256],
     show_nametable_boundaries: bool,
@@ -29,10 +24,10 @@ pub struct DebugGraphics {
     curr_palette: u8,
 }
 
-const FPS_SAMPLE_SIZE: usize = 120;
+const FPS_SAMPLE_SIZE: usize = 60;
 
 impl NesGraphics for DebugGraphics {
-    fn render_frame(&mut self, frame: Frame, cpu: &mut Cpu) -> Result<()> {
+    fn render_frame(&mut self, frame: Frame, info: CpuInfo) -> Result<()> {
         self.canvas.set_draw_color(Color::BLACK);
         self.canvas.clear();
 
@@ -55,94 +50,121 @@ impl NesGraphics for DebugGraphics {
             let w = Self::NES_WIDTH as i32;
             let h = Self::NES_HEIGHT as i32;
             for r in 0..30 {
-                self.canvas.draw_line(Point::new(0, r*8*s), Point::new(w * s, r * 8 * s))?;
+                self.canvas
+                    .draw_line(Point::new(0, r * 8 * s), Point::new(w * s, r * 8 * s))?;
             }
             for c in 0..32 {
-                self.canvas.draw_line(Point::new(c * 8 * s, 0), Point::new(c*8*s, h * s))?;
+                self.canvas
+                    .draw_line(Point::new(c * 8 * s, 0), Point::new(c * 8 * s, h * s))?;
             }
         }
 
         if self.show_oam {
-            let oam = cpu
-            .debug_oam()
-            .into_iter()
-            .take(10)
-            .map(|sprite| format!("({}, {}) id: {:X}, attr: {:X}", sprite.x, sprite.y, sprite.id, sprite.attributes.0))
-            .fold(String::from("Sprites:\n"), |a, b| a + &b + "\n");
-            self.write_text(&oam, self.width() as i32 - 500, 200, Some(1.5), Color::WHITE)?;
+            let oam = info
+                .sprites
+                .into_iter()
+                .take(10)
+                .map(|sprite| {
+                    format!(
+                        "({}, {}) id: {:X}, attr: {:X}",
+                        sprite.x, sprite.y, sprite.id, sprite.attributes.0
+                    )
+                })
+                .fold(String::from("Sprites:\n"), |a, b| a + &b + "\n");
+            self.write_text(
+                &oam,
+                self.width() as i32 - 500,
+                200,
+                Some(1.5),
+                Color::WHITE,
+            )?;
         }
 
         // Draw Palette Tables
-        let palettes = cpu.debug_palettes();
-        let (p0, p1) = cpu
-            .debug_pattern_tables(self.curr_palette % 4, self.curr_palette < 4)?;
+        let palettes = info.palettes;
+        let (p0, p1) = info.pattern_tables;
 
         self.draw_pattern_table(
             &p1,
+            &palettes[self.curr_palette as usize],
             2,
             self.width() as i32 - 256,
             self.height() as i32 - 256,
         )?;
         self.draw_pattern_table(
             &p0,
+            &palettes[self.curr_palette as usize],
             2,
             self.width() as i32 - 512,
             self.height() as i32 - 256,
         )?;
         self.draw_palettes(&palettes)?;
         let pal_str = format!("Palette: {}", self.curr_palette);
-        self.write_text(&pal_str, self.width() as i32 - 500, self.height() as i32 - 280, Some(2.0), Color::WHITE)?;
+        self.write_text(
+            &pal_str,
+            self.width() as i32 - 500,
+            self.height() as i32 - 280,
+            Some(2.0),
+            Color::WHITE,
+        )?;
 
-        let reg_str = format!("{}", cpu.reg);
-        self.write_text(&reg_str, self.width() as i32 - 500, 2, Some(1.5), Color::WHITE)?;
+        let reg_str = format!("{}", info.registers);
+        self.write_text(
+            &reg_str,
+            self.width() as i32 - 500,
+            2,
+            Some(1.5),
+            Color::WHITE,
+        )?;
 
-        let (pc0, i0) = cpu.peek_next_instr(0).unwrap_or((0, Instr{op: Opcode::NOP, mode: AddressingMode::Implied}));
-        let (pc1, i1) = cpu.peek_next_instr(1).unwrap_or((0, Instr{op: Opcode::NOP, mode: AddressingMode::Implied}));
-        let (pc2, i2) = cpu.peek_next_instr(2).unwrap_or((0, Instr{op: Opcode::NOP, mode: AddressingMode::Implied}));
-        let i_str = format!("{:04X}: {}\n{:04X}: {}\n{:04X}: {}", pc0, i0, pc1, i1, pc2, i2);
-        self.write_text(&i_str, self.width() as i32 - 500, 32, Some(2.0), Color::WHITE)?;
+        let instr_str = info
+            .instructions
+            .iter()
+            .take(4)
+            .map(|(addr, i)| format!("{:04X}: {}", addr, i))
+            .fold(String::new(), |a, b| a + &b + "\n");
+        self.write_text(&instr_str, self.width() as i32 - 500, 32, Some(2.0), Color::WHITE)?;
 
         self.frame_times.push_back(Instant::now());
         if self.frame_times.len() == FPS_SAMPLE_SIZE {
             self.frame_times.pop_front();
-            let fps = 1.0 / (*self.frame_times.back().unwrap() - *self.frame_times.front().unwrap()).as_secs_f64() * (FPS_SAMPLE_SIZE as f64);
+            let fps = 1.0
+                / (*self.frame_times.back().unwrap() - *self.frame_times.front().unwrap())
+                    .as_secs_f64()
+                * (FPS_SAMPLE_SIZE as f64);
             let color = match fps.round() as u16 {
                 0..=50 => Color::RED,
                 51..=59 => Color::YELLOW,
-                60.. => Color::WHITE
+                60.. => Color::WHITE,
             };
-            self.write_text(&format!("FPS: {}", fps.round()), self.width() as i32 - 500, 128, Some(2.0), color)?;
+            self.write_text(
+                &format!("FPS: {}", fps.round()),
+                self.width() as i32 - 500,
+                128,
+                Some(2.0),
+                color,
+            )?;
         }
 
         self.canvas.present();
         Ok(())
     }
 
-    fn events(&mut self) -> Vec<Event> {
-        let events = self.event_pump.poll_iter().collect::<Vec<Event>>();
-        for e in events.iter() {
+    fn process_events(&mut self, events: &Vec<sdl2::event::Event>) {
+        use Keycode::*;
+        for e in events {
             match e {
-                Event::KeyDown { keycode: Some(Keycode::P), .. } => {
-                    self.curr_palette = (self.curr_palette + 1) % 8;
+                sdl2::event::Event::KeyDown {
+                    keycode: Some(k), ..
+                } => match k {
+                    P => self.curr_palette = (self.curr_palette + 1) % 8,
+                    O => self.show_oam = !self.show_oam,
+                    N => self.show_nametable_boundaries = !self.show_nametable_boundaries,
+                    _ => (),
                 },
-                Event::KeyDown { keycode: Some(Keycode::N), .. } => {
-                    self.show_nametable_boundaries = !self.show_nametable_boundaries;
-                }
-                Event::KeyDown { keycode: Some(Keycode::O), .. } => {
-                    self.show_oam = !self.show_oam;
-                }
                 _ => (),
             }
         }
-        events
-    }
-
-    fn performance_frequency(&self) -> Result<u64> {
-        Ok(self.context.timer()?.performance_frequency())
-    }
-
-    fn performance_counter(&self) -> Result<u64> {
-        Ok(self.context.timer()?.performance_counter())
     }
 }
 
@@ -156,10 +178,8 @@ impl DebugGraphics {
     const SPRITES_PER_ROW: i32 = 16;
     const SPRITES_PER_COL: i32 = 16;
 
-    pub fn new(iscale: u32) -> Self {
-        let sdl_context = sdl2::init().unwrap();
-        let video_subsystem = sdl_context.video().unwrap();
-        let window = video_subsystem
+    pub fn new(iscale: u32, video: VideoSubsystem) -> Self {
+        let window = video
             .window(
                 Self::TITLE,
                 Self::NES_WIDTH * iscale + 512,
@@ -171,7 +191,6 @@ impl DebugGraphics {
 
         let mut canvas = window.into_canvas().build().unwrap();
         canvas.clear();
-        let event_pump = sdl_context.event_pump().unwrap();
 
         let font_surface = Surface::load_bmp("font.bmp").expect("Could not load font.bmp");
 
@@ -192,9 +211,7 @@ impl DebugGraphics {
         }
 
         Self {
-            context: sdl_context,
             canvas,
-            event_pump,
             font_texture,
             character_rects,
             curr_palette: 0,
@@ -206,23 +223,24 @@ impl DebugGraphics {
     }
 
     fn width(&self) -> u32 {
-        Self::NES_WIDTH * self.iscale + 512 
+        self.canvas.output_size().unwrap().0
     }
 
     fn height(&self) -> u32 {
-        Self::NES_HEIGHT * self.iscale
+        self.canvas.output_size().unwrap().1
     }
 
     fn draw_pattern_table(
         &mut self,
-        pixels: &[[Color; 128]; 128],
+        pixels: &[[u8; 128]; 128],
+        palette: &Vec<Color>,
         scale: u32,
         x: i32,
         y: i32,
     ) -> Result<()> {
         for r in 0..pixels.len() {
             for c in 0..pixels[r].len() {
-                self.canvas.set_draw_color(pixels[r][c]);
+                self.canvas.set_draw_color(palette[pixels[r][c] as usize]);
                 self.canvas.fill_rect(Rect::new(
                     x + (c * scale as usize) as i32,
                     y + (r * scale as usize) as i32,
@@ -258,7 +276,7 @@ impl DebugGraphics {
                         .set_draw_color(palettes[palette_num as usize][color]);
                     // self.canvas.set_draw_color(Color::WHITE);
                     self.canvas.fill_rect(Rect::new(
-                        x + BORDER_SCALE as i32 + (color as i32* COLOR_WIDTH as i32),
+                        x + BORDER_SCALE as i32 + (color as i32 * COLOR_WIDTH as i32),
                         y + BORDER_SCALE as i32,
                         COLOR_WIDTH,
                         COLOR_HEIGHT,

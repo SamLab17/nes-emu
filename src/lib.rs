@@ -5,3 +5,4 @@ pub mod ppu;
 pub mod cart;
 pub mod ines;
 pub mod controller;
+pub mod graphics;

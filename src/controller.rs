@@ -1,4 +1,4 @@
-use std::{rc::Rc, cell::RefCell};
+use std::{rc::Rc, cell::RefCell, sync::{Arc, Mutex}};
 
 use bitflags::bitflags;
 
@@ -54,8 +54,8 @@ impl Controller {
     }
 }
 
-pub type ControllerRef = Rc<RefCell<Box<Controller>>>;
+pub type ControllerRef = Arc<Mutex<Box<Controller>>>;
 
 pub fn make_controller() -> ControllerRef {
-    Rc::new(RefCell::new(Box::new(Controller::new())))
+    Arc::new(Mutex::new(Box::new(Controller::new())))
 }

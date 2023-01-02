@@ -31,7 +31,7 @@ impl Cart for Uxrom {
             },
             0xC000..=0xFFFF => {
                 // Hardwired to last bank
-                let base = (self.prg_rom.len() - (16 * 1024));
+                let base = self.prg_rom.len() - (16 * 1024);
                 let offset = (addr & 0x3FFF) as usize;
                 Ok(self.prg_rom[base + offset])
             }

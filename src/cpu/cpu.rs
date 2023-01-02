@@ -7,10 +7,11 @@ use super::reg::{Registers, StatusFlags};
 use crate::cart::cart::Cartridge;
 use crate::controller::ControllerRef;
 use crate::error::Result;
+use crate::graphics::graphics::CpuInfo;
 use crate::mem::bus::MemoryBus;
 use crate::mem::bus::MemoryBusBuilder;
 use crate::mem::utils::make_address;
-use crate::ppu::ppu::{Frame, PatternTable, OamSprite};
+use crate::ppu::ppu::{Frame, OamSprite, PatternTable};
 
 pub const STACK_OFFSET: u16 = 0x100;
 
@@ -43,26 +44,38 @@ pub struct Cpu {
     pub reg: Registers,
     bus: MemoryBus,
     pub interrupt: Option<Interrupt>,
-    cycles_left: u16, // Cycles left before next instruction
-    ticks_left: u16, // Ticks left before next CPU cycle
-    num_cpu_cycles: u64, // Number of CPU cycles elapsed
-    num_system_ticks: u64 // Number of system ticks elapsed
+    cycles_left: u16,      // Cycles left before next instruction
+    ticks_left: u16,       // Ticks left before next CPU cycle
+    num_cpu_cycles: u64,   // Number of CPU cycles elapsed
+    num_system_ticks: u64, // Number of system ticks elapsed
+    sample_freq: f64,
+    audio_time: f64,
 }
 
 impl Cpu {
-    pub fn new(cart: Cartridge, controller1: Option<ControllerRef>, controller2: Option<ControllerRef>) -> Self {
+    pub fn new(
+        cart: Cartridge,
+        audio_sample_freq: f64,
+        controller1: Option<ControllerRef>,
+        controller2: Option<ControllerRef>,
+    ) -> Self {
         Self {
             reg: Registers {
                 pc: 0x34,
                 sp: 0xFD,
                 ..Registers::default()
             },
-            bus: MemoryBusBuilder::new().with_cart(cart).with_controllers(controller1, controller2).build(),
+            bus: MemoryBusBuilder::new()
+                .with_cart(cart)
+                .with_controllers(controller1, controller2)
+                .build(),
             interrupt: None,
             cycles_left: 0,
             ticks_left: 0,
             num_cpu_cycles: 0,
-            num_system_ticks: 0
+            num_system_ticks: 0,
+            sample_freq: audio_sample_freq ,
+            audio_time: 0.0,
         }
     }
 
@@ -76,7 +89,9 @@ impl Cpu {
             cycles_left: 0,
             ticks_left: 0,
             num_cpu_cycles: 0,
-            num_system_ticks: 0
+            num_system_ticks: 0,
+            sample_freq: 0.0,
+            audio_time: 0.0
         }
     }
 
@@ -128,7 +143,7 @@ impl Cpu {
         let pc = self.reg.pc;
         // Decode and run the next instruction
         let (i, ncycles) = fetch_instr(self)?;
-       
+
         // Log instructions being run
         if let Some(log) = log {
             log.push_str(&format!(
@@ -175,29 +190,40 @@ impl Cpu {
         Ok(())
     }
 
-    pub fn system_tick(&mut self, log: Option<&mut String>) -> Result<Option<Frame>> {
+    pub fn system_tick(&mut self, log: Option<&mut String>) -> Result<(Option<Frame>, Option<f64>)> {
         if self.ticks_left == 0 {
             self.cycle(log)?;
             self.ticks_left = NUM_TICKS_PER_CPU_CYCLE;
         }
         self.ticks_left -= 1;
 
-        let (frame, int) = self.bus.ppu.tick()?;
+        let (ret_frame, int) = self.bus.ppu.tick()?;
         if int.is_some() {
             self.interrupt = int;
         }
 
+        // Tick APU
+        let mut ret_audio = None;
+        let time_per_system_tick = 1.0 / 5369318.0;
+        let time_per_sample = 1.0 / self.sample_freq ;
+        self.audio_time += time_per_system_tick; 
+        if self.audio_time >= time_per_sample {
+            self.audio_time -= time_per_sample;
+            // TODO: get audio sample from APU instead
+            ret_audio = Some(0.0);
+        }
+
         self.num_system_ticks += 1;
-        Ok(frame)
+        Ok((ret_frame, ret_audio))
     }
 
-    pub fn next_frame(&mut self) -> Result<Frame> {
-        loop {
-            if let Some(frame) = self.system_tick(None)? {
-                return Ok(frame);
-            }
-        }
-    }
+    // pub fn next_frame(&mut self) -> Result<Frame> {
+    //     loop {
+    //         if let Some(frame) = self.system_tick(None)? {
+    //             return Ok(frame);
+    //         }
+    //     }
+    // }
 
     pub fn read(&mut self, addr: u16) -> Result<u8> {
         self.bus.read(addr)
@@ -224,7 +250,11 @@ impl Cpu {
         }
     }
 
-    pub fn debug_pattern_tables(&mut self, palette: u8, bg: bool) -> Result<(PatternTable, PatternTable)> {
+    pub fn debug_pattern_tables(
+        &mut self,
+        palette: u8,
+        bg: bool,
+    ) -> Result<(PatternTable, PatternTable)> {
         self.bus.ppu.debug_pattern_tables(palette, bg)
     }
 
@@ -233,7 +263,27 @@ impl Cpu {
     }
 
     pub fn debug_oam(&self) -> Vec<OamSprite> {
-        (0..64).map(|idx| self.bus.ppu.oam_read(idx)).collect::<Vec<OamSprite>>()
+        (0..64)
+            .map(|idx| self.bus.ppu.oam_read(idx))
+            .collect::<Vec<OamSprite>>()
+    }
+
+    pub fn get_info(&mut self) -> CpuInfo {
+        const NUM_INSTR: u16 = 10;
+        let mut instr = vec![];
+        for off in 0..NUM_INSTR {
+            match self.peek_next_instr(off) {
+                Ok((addr, i)) => instr.push((addr, i)),
+                Err(_) => {break;}
+            }
+        }
+        CpuInfo {
+            sprites: self.debug_oam(),
+            palettes: self.debug_palettes(),
+            pattern_tables: self.debug_pattern_tables(0, true).unwrap(),
+            instructions: instr,
+            registers: self.reg.clone(),
+        }
     }
 }
 
@@ -247,7 +297,7 @@ mod cpu_test {
     #[test]
     fn nestest() {
         let rom = INesFile::try_from(&NESTEST.to_vec()).unwrap();
-        let mut cpu = Cpu::new(build_cartridge(&rom).unwrap(), None, None);
+        let mut cpu = Cpu::new(build_cartridge(&rom).unwrap(), 44410.0, None, None);
         cpu.reset().unwrap();
         cpu.reg.pc = 0xC000;
 
